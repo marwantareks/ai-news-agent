@@ -597,12 +597,13 @@ def main():
 
     if S3_BUCKET:
         import boto3
+        from botocore.exceptions import ClientError
         s3 = boto3.client("s3")
         try:
             s3.head_object(Bucket=S3_BUCKET, Key=s3_key)
             log.info("Report for %s already exists in S3. Skipping.", date_str)
             return
-        except s3.exceptions.ClientError as e:
+        except ClientError as e:
             if e.response["Error"]["Code"] != "404":
                 raise
     else:
