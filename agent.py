@@ -14,6 +14,13 @@ load_dotenv()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 TAVILY_API_KEY    = os.getenv("TAVILY_API_KEY")
 
+EMAIL_TO       = os.getenv("EMAIL_TO", "")
+EMAIL_FROM     = os.getenv("EMAIL_FROM", "")
+SMTP_HOST      = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT      = int(os.getenv("SMTP_PORT", "465"))
+SMTP_USER      = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD  = os.getenv("SMTP_PASSWORD", "")
+
 REPORTS_DIR = Path(__file__).parent / "reports"
 LOG_FILE    = Path(__file__).parent / "agent.log"
 
@@ -503,6 +510,35 @@ def generate_html(summary: dict, date_str: str) -> str:
 </html>"""
 
 
+# ── Email delivery ────────────────────────────────────────────────────────────
+
+def send_email(report_path: Path, date_str: str) -> None:
+    """Send the HTML report as an email. Logs a warning and returns if config is missing."""
+    import smtplib
+    from email.message import EmailMessage
+
+    if not all([EMAIL_TO, EMAIL_FROM, SMTP_HOST, SMTP_USER, SMTP_PASSWORD]):
+        log.warning("Email config incomplete — skipping email. Set EMAIL_* vars in .env to enable.")
+        return
+
+    html_content = report_path.read_text(encoding="utf-8")
+
+    msg = EmailMessage()
+    msg["Subject"] = f"AI Learning Digest · {date_str}"
+    msg["From"]    = EMAIL_FROM
+    msg["To"]      = EMAIL_TO
+    msg.set_content("Open this email in an HTML-capable client to view the digest.")
+    msg.add_alternative(html_content, subtype="html")
+
+    try:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
+            smtp.login(SMTP_USER, SMTP_PASSWORD)
+            smtp.send_message(msg)
+        log.info("Report emailed to %s", EMAIL_TO)
+    except Exception as e:
+        log.error("Failed to send email: %s", e)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -563,6 +599,7 @@ def main():
     html = generate_html(summary, date_str)
     report_path.write_text(html, encoding="utf-8")
     log.info("Report saved: %s", report_path)
+    send_email(report_path, date_str)
 
 
 if __name__ == "__main__":

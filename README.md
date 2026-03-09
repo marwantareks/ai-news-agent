@@ -86,6 +86,15 @@ System design patterns, trade-offs, production concerns, and decision frameworks
                      │
                      ▼
         reports/YYYY-MM-DD-ai-learning.html
+                     │
+                     ▼
+        ┌─────────────────────────────────────────┐
+        │  4. Email delivery (optional)            │
+        │     - Sends report as HTML email body    │
+        │     - SMTP_SSL on port 465               │
+        │     - Skipped gracefully if EMAIL_*      │
+        │       vars are not configured            │
+        └─────────────────────────────────────────┘
 ```
 
 ### Key design decisions
@@ -159,7 +168,21 @@ Create a file named `.env` in the project root:
 ```env
 ANTHROPIC_API_KEY=sk-ant-...
 TAVILY_API_KEY=tvly-...
+
+# Email delivery (optional — leave blank to disable)
+EMAIL_TO=you@example.com
+EMAIL_FROM=you@gmail.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=your-16-char-app-password
 ```
+
+> **Gmail App Password:** Go to myaccount.google.com → Security → 2-Step Verification → App passwords. Generate a password for "Mail" and paste it as `SMTP_PASSWORD`. Never use your main Google account password here.
+>
+> `SMTP_USER` must always be your **Gmail address** (e.g. `you@gmail.com`), even if `EMAIL_FROM` is a custom domain routed through Gmail.
+>
+> If any `EMAIL_*` variable is left blank the agent skips email silently and just saves the HTML file as normal.
 
 ### 3. Run the one-time setup
 
@@ -209,6 +232,8 @@ Open any `.html` file in your browser. Each report:
 - Links directly to the source (article or YouTube video)
 - Supports light and dark mode automatically
 - Is fully self-contained (no external dependencies)
+
+If `EMAIL_*` vars are configured, the same report is also **emailed to you automatically** as a rich HTML email immediately after it is saved.
 
 ---
 
