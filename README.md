@@ -1,15 +1,15 @@
 # AI Learning Digest Agent
 
-A lightweight daily agent that curates the best articles and YouTube videos published in the last 7 days to help you learn about Generative AI, Agentic AI, Agentic Coding, Prompt Engineering, and AI Research — delivered as a clean, self-contained HTML report.
+A lightweight daily agent that curates the best articles and YouTube videos published in the last 7 days — organized into a **Developer Track** and an **Architect Track** — and delivered as a clean, self-contained HTML report.
 
 ---
 
 ## Objective
 
-Keep up with the fast-moving AI learning landscape without spending hours searching. Each morning the agent:
+Keep up with the fast-moving AI landscape without spending hours searching. Each morning the agent:
 
-1. Searches the web **and YouTube** for fresh educational content across 5 AI topics.
-2. Uses Claude AI to curate the best resources and explain why each one is worth your time.
+1. Searches the web **and YouTube** for fresh educational content across 10 AI topics.
+2. Uses Claude Haiku to curate the best resources per track and explain why each one is worth your time.
 3. Produces a **"Concept of the Day"** — a plain-English explanation of one key AI concept.
 4. Saves a dated HTML report to the `reports/` folder, ready to open in any browser.
 
@@ -17,13 +17,27 @@ Keep up with the fast-moving AI learning landscape without spending hours search
 
 ## Covered Topics
 
+### ⌨ Developer Track
+Hands-on tutorials, code examples, and implementation guides.
+
 | Topic | What you will learn |
 |---|---|
-| **Generative AI** | Core concepts, new capabilities, tutorials on LLMs and image/audio models |
-| **Agentic AI** | How AI agents work, tool use, multi-agent systems, memory and planning patterns |
+| **Generative AI Fundamentals** | Core concepts, how LLMs work, deep-dive tutorials |
+| **Agentic AI** | How AI agents work, tool use, memory and planning patterns |
 | **Agentic Coding** | AI-powered development tools (Claude Code, Cursor, Devin), coding agent workflows |
-| **Prompt Engineering** | Techniques to get better results from LLMs |
-| **AI Research Explained** | Recent papers broken down in plain English |
+| **Prompt Engineering** | Structured output, chain-of-thought, few-shot and advanced techniques |
+| **AI Orchestration & Frameworks** | LangChain, LangGraph, CrewAI, Anthropic Agent SDK, multi-agent frameworks |
+
+### 🏛 Architect Track
+System design patterns, trade-offs, production concerns, and decision frameworks.
+
+| Topic | What you will learn |
+|---|---|
+| **AI System Design** | Scalable LLM architecture patterns for production |
+| **RAG Architecture** | Retrieval-augmented generation, vector databases, design trade-offs |
+| **Multi-Agent System Design** | Orchestration patterns, coordination strategies, architecture blueprints |
+| **LLMOps & AI in Production** | Deployment, monitoring, observability, and cost optimization |
+| **AI Security & Guardrails** | Prompt injection, enterprise trust boundaries, guardrail architectures |
 
 ---
 
@@ -41,7 +55,7 @@ Keep up with the fast-moving AI learning landscape without spending hours search
                agent.py
         ┌────────────┴────────────────────────────┐
         │  1. Search (Tavily API)                  │
-        │     2 queries × 5 topics = 10 searches  │
+        │     2 queries × 10 topics = 20 searches  │
         │     - web articles & tutorials           │
         │     - YouTube videos (site:youtube.com) │
         │     topic=general, days=7               │
@@ -49,19 +63,22 @@ Keep up with the fast-moving AI learning landscape without spending hours search
                      │ raw results (deduplicated)
                      ▼
         ┌─────────────────────────────────────────┐
-        │  2. Curate (Claude Haiku)                │
-        │     Single API call that returns:        │
+        │  2. Curate (Claude Haiku) — 2 calls      │
+        │     Call 1: Developer Track (5 topics)   │
+        │     Call 2: Architect Track (5 topics)   │
+        │     Each call returns:                   │
         │     - 2-4 best resources per topic       │
         │     - type, difficulty, time estimate    │
         │     - "why learn this" per resource      │
-        │     - Concept of the Day                 │
+        │     - Concept of the Day (call 1 only)   │
         └────────────┬────────────────────────────┘
-                     │ structured JSON
+                     │ structured JSON (merged)
                      ▼
         ┌─────────────────────────────────────────┐
         │  3. Generate HTML report                 │
         │     - Concept of the Day section         │
-        │     - Per-topic cards                    │
+        │     - Developer Track section + cards    │
+        │     - Architect Track section + cards    │
         │     - Article / Video badges             │
         │     - Difficulty & time estimate tags    │
         │     - Dark mode support                  │
@@ -73,9 +90,10 @@ Keep up with the fast-moving AI learning landscape without spending hours search
 
 ### Key design decisions
 
-- **7-day window** — Learning content doesn't expire overnight. A great tutorial from 5 days ago is more valuable than a shallow post from this morning.
+- **Two tracks** — Developer and Architect content is curated separately, each with its own Claude call and audience-specific instructions, so the results are relevant to each role.
+- **7-day window** — A great tutorial from 5 days ago is more valuable than a shallow post from this morning.
 - **YouTube included** — Each topic runs a second query with `site:youtube.com` so both articles and videos are surfaced.
-- **Single Claude call** — All topics are summarised in one Haiku request to minimise cost and latency.
+- **Two Claude Haiku calls** — One per track keeps each prompt within token limits and lets Claude tailor curation to each audience.
 - **Deduplication** — URLs are deduplicated across queries per topic before sending to Claude.
 - **Skip-if-exists guard** — If today's report already exists the agent exits without any API calls.
 
@@ -86,11 +104,14 @@ Keep up with the fast-moving AI learning landscape without spending hours search
 ```
 ┌──────────────────────────────────────────────┐
 │  AI Learning Digest · 2026-03-09             │
-│  14 resources · Gen AI · Agentic AI · ...    │
+│  20 resources · 12 developer · 8 architect   │
 ├──────────────────────────────────────────────┤
 │  CONCEPT OF THE DAY                          │
 │  "Tool Use in AI Agents"                     │
 │  Plain-English 3-sentence explanation...     │
+├──────────────────────────────────────────────┤
+│  ⌨ Developer Track                           │
+│  Hands-on tutorials, code examples...        │
 ├──────────────────────────────────────────────┤
 │  Agentic AI                    3 resources   │
 │  ▶ Video  | Intermediate | ⏱ 14 min         │
@@ -101,7 +122,10 @@ Keep up with the fast-moving AI learning landscape without spending hours search
 │  Building your first AI agent with ...  →    │
 │  Why learn this: ...                         │
 ├──────────────────────────────────────────────┤
-│  Agentic Coding                2 resources   │
+│  🏛 Architect Track                          │
+│  System design patterns, trade-offs...       │
+├──────────────────────────────────────────────┤
+│  RAG Architecture              2 resources   │
 │  ...                                         │
 └──────────────────────────────────────────────┘
 ```
@@ -121,10 +145,11 @@ Keep up with the fast-moving AI learning landscape without spending hours search
 
 ## Installation
 
-### 1. Clone or download the project
+### 1. Clone the repository
 
-```
-C:\MyProjects\ai-news-agent\
+```bash
+git clone https://github.com/marwantareks/ai-news-agent.git
+cd ai-news-agent
 ```
 
 ### 2. Create your `.env` file
@@ -179,8 +204,8 @@ reports/
 
 Open any `.html` file in your browser. Each report:
 - Shows a **Concept of the Day** at the top
-- Lists curated resources per topic with article/video badges
-- Includes difficulty level (Beginner / Intermediate / Advanced) and estimated time
+- Lists curated resources separated into Developer and Architect tracks
+- Includes article/video badges, difficulty level, and estimated time per resource
 - Links directly to the source (article or YouTube video)
 - Supports light and dark mode automatically
 - Is fully self-contained (no external dependencies)
@@ -196,7 +221,6 @@ ai-news-agent/
 ├── setup.bat              # One-time setup (venv + scheduler)
 ├── run_agent.bat          # Manual run shortcut
 ├── setup_scheduler.ps1    # Registers the Task Scheduler job
-├── agent.log              # Runtime log (created on first run)
 ├── .env                   # Your API keys (not committed to git)
 └── reports/
     └── YYYY-MM-DD-ai-learning.html
