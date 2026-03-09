@@ -21,6 +21,10 @@ SMTP_PORT      = int(os.getenv("SMTP_PORT", "465"))
 SMTP_USER      = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD  = os.getenv("SMTP_PASSWORD", "")
 
+# AWS mode — set by template.yaml; absent in local mode
+S3_BUCKET  = os.getenv("S3_BUCKET", "")
+SES_REGION = os.getenv("SES_REGION", "us-east-1")
+
 REPORTS_DIR = Path(__file__).parent / "reports"
 LOG_FILE    = Path(__file__).parent / "agent.log"
 
@@ -125,13 +129,15 @@ TOPICS = [
 TOPIC_COLORS   = {t["name"]: t["color"]   for t in TOPICS}
 TOPIC_SECTIONS = {t["name"]: t["section"] for t in TOPICS}
 
+_handlers: list = [logging.StreamHandler(sys.stdout)]
+if not S3_BUCKET:
+    # Local mode only — Lambda captures stdout to CloudWatch automatically
+    _handlers.append(logging.FileHandler(LOG_FILE, encoding="utf-8"))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ],
+    handlers=_handlers,
 )
 log = logging.getLogger(__name__)
 
@@ -539,6 +545,35 @@ def send_email(report_path: Path, date_str: str) -> None:
         log.error("Failed to send email: %s", e)
 
 
+def aws_send_email(html_content: str, date_str: str) -> None:
+    """Send the HTML report via Amazon SES. Skipped silently if EMAIL_TO or EMAIL_FROM is not set."""
+    import boto3
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    if not all([EMAIL_TO, EMAIL_FROM]):
+        log.warning("EMAIL_TO or EMAIL_FROM not set — skipping SES email.")
+        return
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"AI Learning Digest · {date_str}"
+    msg["From"]    = EMAIL_FROM
+    msg["To"]      = EMAIL_TO
+    msg.attach(MIMEText("Open this email in an HTML-capable client to view the digest.", "plain"))
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    ses = boto3.client("ses", region_name=SES_REGION)
+    try:
+        ses.send_raw_email(
+            Source=EMAIL_FROM,
+            Destinations=[EMAIL_TO],
+            RawMessage={"Data": msg.as_bytes()},
+        )
+        log.info("Report emailed via SES to %s", EMAIL_TO)
+    except Exception as e:
+        log.error("SES send failed: %s", e)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -553,17 +588,27 @@ def main():
         log.error("Missing API keys in .env file.")
         sys.exit(1)
 
-    REPORTS_DIR.mkdir(exist_ok=True)
-
     tavily = TavilyClient(api_key=TAVILY_API_KEY)
     claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     date_str    = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     report_path = REPORTS_DIR / f"{date_str}-ai-learning.html"
+    s3_key      = f"{date_str}-ai-learning.html"
 
-    if report_path.exists():
-        log.info("Report for %s already exists. Skipping.", date_str)
-        sys.exit(0)
+    if S3_BUCKET:
+        import boto3
+        s3 = boto3.client("s3")
+        try:
+            s3.head_object(Bucket=S3_BUCKET, Key=s3_key)
+            log.info("Report for %s already exists in S3. Skipping.", date_str)
+            return
+        except s3.exceptions.ClientError as e:
+            if e.response["Error"]["Code"] != "404":
+                raise
+    else:
+        if report_path.exists():
+            log.info("Report for %s already exists. Skipping.", date_str)
+            sys.exit(0)
 
     log.info("Starting AI learning digest for %s", date_str)
 
@@ -597,10 +642,27 @@ def main():
     }
 
     html = generate_html(summary, date_str)
-    report_path.write_text(html, encoding="utf-8")
-    log.info("Report saved: %s", report_path)
-    send_email(report_path, date_str)
+
+    if S3_BUCKET:
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=s3_key,
+            Body=html.encode("utf-8"),
+            ContentType="text/html; charset=utf-8",
+        )
+        log.info("Report uploaded to s3://%s/%s", S3_BUCKET, s3_key)
+        aws_send_email(html, date_str)
+    else:
+        REPORTS_DIR.mkdir(exist_ok=True)
+        report_path.write_text(html, encoding="utf-8")
+        log.info("Report saved: %s", report_path)
+        send_email(report_path, date_str)
 
 
 if __name__ == "__main__":
+    main()
+
+
+def lambda_handler(event, context):
+    """AWS Lambda entry point. EventBridge passes a scheduled event; we ignore its payload."""
     main()

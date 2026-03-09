@@ -4,3 +4,5 @@ __pycache__/
 .env
 reports/
 agent.log
+samconfig.toml
+.aws-sam/

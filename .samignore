@@ -1,0 +1,13 @@
+venv/
+reports/
+*.log
+.env
+__pycache__/
+*.pyc
+.git/
+samconfig.toml
+setup.bat
+run_agent.bat
+setup_scheduler.ps1
+README.md
+CLAUDE.md

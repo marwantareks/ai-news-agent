@@ -242,15 +242,17 @@ If `EMAIL_*` vars are configured, the same report is also **emailed to you autom
 ```
 ai-news-agent/
 ├── agent.py               # Main agent logic (search → curate → HTML → email)
+├── template.yaml          # AWS SAM template (Lambda + EventBridge + S3 + IAM)
+├── samconfig.toml         # SAM deploy config (generated; not committed to git)
 ├── requirements.txt       # Python dependencies
-├── setup.bat              # One-time setup (venv + scheduler)
-├── run_agent.bat          # Manual run shortcut
+├── setup.bat              # One-time local setup (venv + Windows scheduler)
+├── run_agent.bat          # Manual local run shortcut
 ├── setup_scheduler.ps1    # Registers the Windows Task Scheduler job
 ├── CLAUDE.md              # Architecture guide for Claude Code
 ├── .env                   # API keys and email config (not committed to git)
-├── agent.log              # Append-only run log (created on first run)
+├── agent.log              # Append-only run log — local mode only
 └── reports/
-    └── YYYY-MM-DD-ai-learning.html
+    └── YYYY-MM-DD-ai-learning.html   # Local mode output only
 ```
 
 ---
@@ -263,6 +265,74 @@ ai-news-agent/
 | `tavily-python` | Web + YouTube search API client |
 | `python-dotenv` | Loads `.env` file into environment variables |
 | `boto3` | AWS SDK — used for S3 and SES in cloud deployment mode |
+
+### Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude Haiku |
+| `TAVILY_API_KEY` | Yes | Tavily search API key |
+| `EMAIL_TO` | No | Recipient email address |
+| `EMAIL_FROM` | No | Sender email address |
+| `SMTP_HOST` | No | SMTP server (local mode only, default: smtp.gmail.com) |
+| `SMTP_PORT` | No | SMTP port (local mode only, default: 465) |
+| `SMTP_USER` | No | Gmail address for SMTP auth (local mode only) |
+| `SMTP_PASSWORD` | No | Gmail App Password (local mode only) |
+| `S3_BUCKET` | AWS mode | S3 bucket name. When set, enables AWS mode: S3 storage + SES email. Set automatically by `template.yaml`. |
+| `SES_REGION` | AWS mode | AWS region for SES client (default: us-east-1). Do NOT use `AWS_REGION` — reserved by Lambda. |
+
+> `S3_BUCKET` and `SES_REGION` are set automatically by `template.yaml` when deployed to Lambda. Do not add them to your local `.env`.
+
+---
+
+## AWS Deployment
+
+The agent can run as an AWS Lambda function triggered daily by EventBridge, storing reports in S3 and delivering email via SES — no server required.
+
+### Prerequisites
+
+| Tool | Install | Verify |
+|---|---|---|
+| AWS CLI v2 | Download `AWSCLIV2.msi` from AWS | `aws --version` |
+| AWS SAM CLI | Download `AWS_SAM_CLI_64_PY3.msi` from GitHub releases | `sam --version` |
+
+### One-time AWS setup
+
+1. **Create IAM user** with `AdministratorAccess` in the AWS Console. Generate an access key, then run `aws configure` (region: `us-east-1`, output: `json`).
+2. **Verify sender email** in Amazon SES (us-east-1): Console → SES → Verified identities → Create identity → Email address. Click the link in the verification email AWS sends.
+3. **Verify recipient email** the same way (required in SES sandbox mode).
+
+> Do NOT manually create the S3 bucket, Lambda function, or EventBridge rule — SAM creates everything automatically.
+
+### Deploy
+
+First time (interactive prompts for API keys and email addresses):
+
+```bash
+sam build && sam deploy --guided
+```
+
+All subsequent updates:
+
+```bash
+sam build && sam deploy
+```
+
+### How it runs on AWS
+
+```
+EventBridge cron(0 3 * * ? *)   →   Lambda (agent.lambda_handler)
+                                         │
+                              ┌──────────┴──────────────────┐
+                              │  1. Tavily search (20 calls) │
+                              │  2. Claude Haiku (2 calls)   │
+                              │  3. Generate HTML            │
+                              │  4. Upload to S3             │
+                              │  5. Send via SES             │
+                              └─────────────────────────────┘
+```
+
+> **Dual-mode design:** `S3_BUCKET` env var gates AWS mode — set automatically by `template.yaml` in Lambda, absent in local mode. The local workflow (`run_agent.bat`, Task Scheduler) is completely unchanged.
 
 ---
 
@@ -279,3 +349,12 @@ ai-news-agent/
 | `Failed to send email` in log | Check `SMTP_USER` is your Gmail address (not custom domain); verify App Password is correct |
 | Email arrives but looks broken | Ensure your email client renders HTML; try a different client |
 | Email not arriving at all | Check spam folder; verify `EMAIL_TO` is correct in `.env` |
+| `sam build` fails — Python version error | Install Python 3.12 and add to PATH, or use `sam build --use-container` (requires Docker) |
+| `sam deploy` fails — `CAPABILITY_NAMED_IAM` | Ensure `capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"` is in `samconfig.toml` |
+| Lambda `PermissionError` on log file | `S3_BUCKET` env var not set in Lambda — FileHandler is trying to write to the read-only package directory |
+| SES `MessageRejected` | Recipient not verified in SES sandbox. Verify in Console → SES → Verified identities |
+| SES `InvalidClientTokenId` | AWS credentials wrong or expired. Re-run `aws configure` |
+| Report not in S3 after Lambda invoke | Check CloudWatch logs `/aws/lambda/ai-news-agent` for API key errors or Tavily failures |
+| Lambda timeout | Typical run is 60–90 s. If timing out at 300 s, check for network issues in CloudWatch log |
+| `AWS_REGION` conflict in template | Do not set `AWS_REGION` in `template.yaml` — Lambda reserves it. Use `SES_REGION` (already handled in the provided template) |
+| EventBridge not triggering | Console → EventBridge → Rules → `ai-news-agent-daily` → confirm Enabled |
