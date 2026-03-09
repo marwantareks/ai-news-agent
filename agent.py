@@ -138,6 +138,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
     handlers=_handlers,
+    force=True,  # Override Lambda's pre-configured root logger
 )
 log = logging.getLogger(__name__)
 

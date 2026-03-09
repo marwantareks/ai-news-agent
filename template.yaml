@@ -73,8 +73,11 @@ Resources:
                 Action:
                   - s3:PutObject
                   - s3:GetObject
-                  - s3:HeadObject
                 Resource: !Sub "arn:aws:s3:::ai-news-agent-reports-${AWS::AccountId}/*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::ai-news-agent-reports-${AWS::AccountId}"
               - Effect: Allow
                 Action:
                   - ses:SendRawEmail
