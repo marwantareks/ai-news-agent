@@ -222,7 +222,7 @@ Reports are saved to:
 
 ```
 reports/
-└── 2026-03-09-ai-learning.html
+└── YYYY-MM-DD-ai-learning.html
 ```
 
 Open any `.html` file in your browser. Each report:
@@ -241,12 +241,14 @@ If `EMAIL_*` vars are configured, the same report is also **emailed to you autom
 
 ```
 ai-news-agent/
-├── agent.py               # Main agent logic
+├── agent.py               # Main agent logic (search → curate → HTML → email)
 ├── requirements.txt       # Python dependencies
 ├── setup.bat              # One-time setup (venv + scheduler)
 ├── run_agent.bat          # Manual run shortcut
-├── setup_scheduler.ps1    # Registers the Task Scheduler job
-├── .env                   # Your API keys (not committed to git)
+├── setup_scheduler.ps1    # Registers the Windows Task Scheduler job
+├── CLAUDE.md              # Architecture guide for Claude Code
+├── .env                   # API keys and email config (not committed to git)
+├── agent.log              # Append-only run log (created on first run)
 └── reports/
     └── YYYY-MM-DD-ai-learning.html
 ```
@@ -260,6 +262,7 @@ ai-news-agent/
 | `anthropic` | Claude Haiku API client for curation and summarisation |
 | `tavily-python` | Web + YouTube search API client |
 | `python-dotenv` | Loads `.env` file into environment variables |
+| `boto3` | AWS SDK — used for S3 and SES in cloud deployment mode |
 
 ---
 
@@ -273,3 +276,6 @@ ai-news-agent/
 | Scheduled task not running | Open Task Scheduler, find `AI-News-Agent-Daily`, run it manually to test |
 | UAC / permission error during setup | Right-click `setup.bat` → **Run as administrator** |
 | No YouTube results | Tavily indexes YouTube — results depend on availability for that query and week |
+| `Failed to send email` in log | Check `SMTP_USER` is your Gmail address (not custom domain); verify App Password is correct |
+| Email arrives but looks broken | Ensure your email client renders HTML; try a different client |
+| Email not arriving at all | Check spam folder; verify `EMAIL_TO` is correct in `.env` |
