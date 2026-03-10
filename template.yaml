@@ -81,7 +81,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - ses:SendRawEmail
-                Resource: "*"
+                Resource: !Sub "arn:aws:ses:us-east-1:${AWS::AccountId}:identity/${EmailFrom}"
 
   # ── Lambda function ──────────────────────────────────────────────────────────
   AgentFunction:

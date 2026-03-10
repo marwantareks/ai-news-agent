@@ -4,6 +4,7 @@
 import os
 import json
 import sys
+import html
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -280,6 +281,15 @@ SECTION_META = {
 }
 
 
+def _safe_url(url: str) -> str:
+    """Return url if http/https, else '#'. Escapes for use in an HTML attribute."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return "#"
+    return html.escape(url, quote=True)
+
+
 def build_cards(topics_data: list, section: str) -> tuple[str, int]:
     """Return (cards_html, resource_count) for all topics in the given section."""
     cards = ""
@@ -301,10 +311,16 @@ def build_cards(topics_data: list, section: str) -> tuple[str, int]:
         for r in resources:
             rtype      = r.get("type", "article").lower()
             difficulty = r.get("difficulty", "intermediate").lower()
-            url        = r.get("url", "")
-            text       = r.get("text", "")
-            time_est   = r.get("time_estimate", "")
-            why        = r.get("why_learn_this", "")
+            # Allowlist to known CSS class names — prevents class injection
+            if rtype not in ("video", "article"):
+                rtype = "article"
+            if difficulty not in ("beginner", "intermediate", "advanced"):
+                difficulty = "intermediate"
+
+            url      = _safe_url(r.get("url", ""))
+            text     = html.escape(r.get("text", ""))
+            time_est = html.escape(r.get("time_estimate", ""))
+            why      = html.escape(r.get("why_learn_this", ""))
 
             icon       = TYPE_ICONS.get(rtype, "📄")
             time_badge = f'<span class="time-est">⏱ {time_est}</span>' if time_est else ""
@@ -325,7 +341,7 @@ def build_cards(topics_data: list, section: str) -> tuple[str, int]:
         cards += f"""
         <div class="card" style="border-left:4px solid {color}">
           <div class="card-header">
-            <h3 style="color:{color}">{name}</h3>
+            <h3 style="color:{color}">{html.escape(name)}</h3>
             <span class="resource-count">{len(resources)} resource{"s" if len(resources) != 1 else ""}</span>
           </div>
           {items_html}
@@ -336,8 +352,8 @@ def build_cards(topics_data: list, section: str) -> tuple[str, int]:
 
 def generate_html(summary: dict, date_str: str) -> str:
     cotd             = summary.get("concept_of_the_day", {})
-    cotd_title       = cotd.get("title", "")
-    cotd_explanation = cotd.get("explanation", "")
+    cotd_title       = html.escape(cotd.get("title", ""))
+    cotd_explanation = html.escape(cotd.get("explanation", ""))
     topics_data      = summary.get("topics", [])
 
     dev_cards,  dev_count  = build_cards(topics_data, "developer")
