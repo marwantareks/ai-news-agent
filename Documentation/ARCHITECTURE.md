@@ -157,9 +157,11 @@ All resources are defined in `template.yaml` and deployed via SAM.
 | `AWSLambdaBasicExecutionRole` (managed) | CloudWatch Logs | Write function logs to CloudWatch |
 | `s3:PutObject`, `s3:GetObject` | `arn:aws:s3:::ai-news-agent-reports-<AccountId>/*` | Upload HTML report, read existing reports |
 | `s3:ListBucket` | `arn:aws:s3:::ai-news-agent-reports-<AccountId>` | Required for `head_object` to return 404 (not 403) on missing keys — enables idempotency check |
-| `ses:SendRawEmail` | `*` | Send the HTML digest via SES |
+| `ses:SendRawEmail` | `arn:aws:ses:us-east-1:<AccountId>:identity/<EmailFrom>` | Send the HTML digest via SES — scoped to the configured sender identity only |
 
 > **Note:** `s3:ListBucket` must be on the bucket ARN (not `/*`) to allow `head_object` to distinguish "file not found" (404) from "access denied" (403). Without it, the idempotency check would raise an exception on the first run of each day.
+
+> **SES IAM scope:** The `ses:SendRawEmail` permission is intentionally restricted to the single `EmailFrom` identity configured at deploy time. If you change the `EMAIL_FROM` Lambda environment variable to a different address, you **must** also redeploy (`deploy.bat` or `sam build && sam deploy`) so the IAM policy ARN is updated to match the new sender address. Updating only the Lambda environment variable without redeploying will cause SES to reject the send with an `AuthorizationError`.
 
 ---
 
@@ -240,6 +242,9 @@ Valid values:
 - Dark mode via `@media (prefers-color-scheme: dark)` — automatic based on OS preference
 - Viewport meta tag for mobile rendering
 - All links open in `target="_blank" rel="noopener noreferrer"`
+- All external-sourced values (from Claude JSON and Tavily results) are HTML-escaped via `html.escape()` before insertion to prevent XSS
+- URLs are validated to `http`/`https` scheme only — `javascript:` and other schemes are replaced with `#`
+- `type` and `difficulty` values are allowlisted to known CSS class names before use as badge class names
 
 ---
 

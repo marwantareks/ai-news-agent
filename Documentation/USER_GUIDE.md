@@ -29,6 +29,8 @@ These are the settings that control how the agent works. They are stored in AWS 
 
 > **Important:** `EMAIL_FROM` must be a verified identity in Amazon SES. Do **not** use a `@gmail.com` address for `EMAIL_FROM` — Gmail addresses are not supported as SES senders. Use a custom domain address that you have verified in SES (see [Section 8](#8-ses-email-verification) for how to verify an address).
 
+> **Changing `EMAIL_FROM`:** The Lambda IAM policy is scoped to the specific sender address set at deploy time. If you update `EMAIL_FROM` to a different address, you must also **redeploy the stack** (`deploy.bat` on Windows, or `sam build && sam deploy`) so the IAM policy ARN is updated. Updating the Lambda environment variable alone is not enough — SES will reject the send with an `AuthorizationError` until the policy is redeployed.
+
 ---
 
 ## 3. How to Change Environment Variables in AWS Console
@@ -180,6 +182,16 @@ Amazon SES requires both the **sender** (`EMAIL_FROM`) and the **recipient** (`E
 Repeat for both `EMAIL_FROM` and `EMAIL_TO` if they are different addresses.
 
 > **Note:** If your account is still in SES Sandbox mode, both sender and recipient must be verified. To send to any unverified address, request SES production access via Console → SES → Account dashboard → Request production access.
+
+### Changing the sender address after deployment
+
+If you want to use a different `EMAIL_FROM` address in the future:
+
+1. Verify the new address in SES (steps above).
+2. Update `EMAIL_FROM` in your `.env` file (used by `deploy.bat` when reading parameters).
+3. Run `deploy.bat` (or `sam build && sam deploy`) — this updates both the Lambda environment variable **and** the IAM policy ARN in one step.
+
+> Do not update `EMAIL_FROM` only via the Lambda console — the IAM policy will still point to the old address and SES sends will fail.
 
 ---
 

@@ -62,3 +62,16 @@ Logs go to both stdout and `agent.log` (appended, UTF-8). Check `agent.log` afte
 ## Scheduler
 
 `setup.bat` registers a Windows Task Scheduler job (`AI-News-Agent-Daily`) via `setup_scheduler.ps1` that runs `run_agent.bat` daily at 03:00 UTC. The task is configured to run on next startup if the machine was off at trigger time.
+
+## Security
+
+### XSS prevention (`agent.py`)
+All external-sourced values (from Claude JSON and Tavily) are escaped before HTML insertion:
+- `html.escape()` applied to `text`, `time_estimate`, `why_learn_this`, `name`, `cotd_title`, `cotd_explanation`
+- `_safe_url()` validates URL scheme — only `http`/`https` pass through; others become `#`
+- `rtype` and `difficulty` are allowlisted to known values before use as CSS class names
+
+### SES IAM scope (`template.yaml`)
+`ses:SendRawEmail` is restricted to `arn:aws:ses:us-east-1:${AWS::AccountId}:identity/${EmailFrom}`.
+
+**If you change `EMAIL_FROM`:** update `.env` and run `deploy.bat` (or `sam build && sam deploy`). Updating the Lambda env var alone is not enough — the IAM policy ARN must also be updated via a redeploy.
