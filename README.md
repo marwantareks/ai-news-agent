@@ -4,6 +4,15 @@ A lightweight daily agent that curates the best articles and YouTube videos publ
 
 ---
 
+## Documentation
+
+| Document | Audience | Description |
+|---|---|---|
+| [Architecture Guide](Documentation/ARCHITECTURE.md) | Developers & Architects | Full pipeline, tech stack, data schemas, AWS infrastructure, environment variables, cost estimates |
+| [User Guide](Documentation/USER_GUIDE.md) | End Users | What env vars do, step-by-step AWS Console instructions, how to test, how to monitor, troubleshooting |
+
+---
+
 ## Objective
 
 Keep up with the fast-moving AI landscape without spending hours searching. Each morning the agent:
@@ -43,16 +52,21 @@ System design patterns, trade-offs, production concerns, and decision frameworks
 
 ## How It Works
 
+The agent runs in two modes — local (your Windows machine) or AWS (fully serverless). Both modes execute the same four-stage pipeline.
+
 ```
-┌─────────────────────────────────────────────────┐
-│  Windows Task Scheduler  (daily at 03:00 GMT)   │
-└────────────────────┬────────────────────────────┘
-                     │ runs
-                     ▼
-              run_agent.bat
-                     │ activates venv, calls
-                     ▼
-               agent.py
+LOCAL MODE                            AWS MODE
+──────────────────────────            ────────────────────────────────────
+Windows Task Scheduler                EventBridge cron(0 3 * * ? *)
+(daily at 03:00 UTC)                  (daily at 03:00 UTC)
+        │                                      │
+        ▼                                      ▼
+  run_agent.bat                     Lambda: agent.lambda_handler()
+  (activates venv)                           │
+        │                                    │
+        └──────────────┬────────────────────-┘
+                       ▼
+                   agent.py
         ┌────────────┴────────────────────────────┐
         │  1. Search (Tavily API)                  │
         │     2 queries × 10 topics = 20 searches  │
@@ -85,15 +99,10 @@ System design patterns, trade-offs, production concerns, and decision frameworks
         └─────────────────────────────────────────┘
                      │
                      ▼
-        reports/YYYY-MM-DD-ai-learning.html
-                     │
-                     ▼
         ┌─────────────────────────────────────────┐
-        │  4. Email delivery (optional)            │
-        │     - Sends report as HTML email body    │
-        │     - SMTP_SSL on port 465               │
-        │     - Skipped gracefully if EMAIL_*      │
-        │       vars are not configured            │
+        │  4. Deliver                              │
+        │  LOCAL: Save to reports/ + SMTP email   │
+        │  AWS:   Upload to S3 + SES email        │
         └─────────────────────────────────────────┘
 ```
 
@@ -241,16 +250,20 @@ If `EMAIL_*` vars are configured, the same report is also **emailed to you autom
 
 ```
 ai-news-agent/
-├── agent.py               # Main agent logic (search → curate → HTML → email)
+├── agent.py               # Main agent logic (search → curate → HTML → email + Lambda handler)
 ├── template.yaml          # AWS SAM template (Lambda + EventBridge + S3 + IAM)
 ├── samconfig.toml         # SAM deploy config (generated; not committed to git)
 ├── requirements.txt       # Python dependencies
 ├── setup.bat              # One-time local setup (venv + Windows scheduler)
 ├── run_agent.bat          # Manual local run shortcut
+├── deploy.bat             # SAM build + deploy to AWS (Windows helper)
 ├── setup_scheduler.ps1    # Registers the Windows Task Scheduler job
 ├── CLAUDE.md              # Architecture guide for Claude Code
 ├── .env                   # API keys and email config (not committed to git)
 ├── agent.log              # Append-only run log — local mode only
+├── Documentation/
+│   ├── ARCHITECTURE.md    # Full technical architecture, pipeline, schemas, AWS infra
+│   └── USER_GUIDE.md      # End-user guide: env vars, AWS Console steps, monitoring
 └── reports/
     └── YYYY-MM-DD-ai-learning.html   # Local mode output only
 ```
@@ -306,7 +319,13 @@ The agent can run as an AWS Lambda function triggered daily by EventBridge, stor
 
 ### Deploy
 
-First time (interactive prompts for API keys and email addresses):
+**Windows helper (reads API keys from your `.env` automatically):**
+
+```bat
+deploy.bat
+```
+
+Or run SAM directly — first time (interactive prompts):
 
 ```bash
 sam build && sam deploy --guided
@@ -347,6 +366,7 @@ EventBridge cron(0 3 * * ? *)   →   Lambda (agent.lambda_handler)
 | UAC / permission error during setup | Right-click `setup.bat` → **Run as administrator** |
 | No YouTube results | Tavily indexes YouTube — results depend on availability for that query and week |
 | `Failed to send email` in log | Check `SMTP_USER` is your Gmail address (not custom domain); verify App Password is correct |
+| SES email not delivered | `EMAIL_FROM` must NOT be a `@gmail.com` address in AWS/SES mode — use a custom domain address that is SES-verified (e.g. `digest@yourdomain.com`) |
 | Email arrives but looks broken | Ensure your email client renders HTML; try a different client |
 | Email not arriving at all | Check spam folder; verify `EMAIL_TO` is correct in `.env` |
 | `sam build` fails — Python version error | Install Python 3.12 and add to PATH, or use `sam build --use-container` (requires Docker) |
