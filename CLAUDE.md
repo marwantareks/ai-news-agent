@@ -72,6 +72,6 @@ All external-sourced values (from Claude JSON and Tavily) are escaped before HTM
 - `rtype` and `difficulty` are allowlisted to known values before use as CSS class names
 
 ### SES IAM scope (`template.yaml`)
-`ses:SendRawEmail` is restricted to `arn:aws:ses:us-east-1:${AWS::AccountId}:identity/${EmailFrom}`.
+`ses:SendRawEmail` is granted on both `arn:aws:ses:us-east-1:${AWS::AccountId}:identity/${EmailFrom}` and `arn:aws:ses:us-east-1:${AWS::AccountId}:identity/${EmailTo}`. SES checks IAM authorization against both when the recipient is a verified identity in the same account.
 
-**If you change `EMAIL_FROM`:** update `.env` and run `deploy.bat` (or `sam build && sam deploy`). Updating the Lambda env var alone is not enough — the IAM policy ARN must also be updated via a redeploy.
+**If you change `EMAIL_FROM` or `EMAIL_TO`:** update `.env` and run `deploy.bat` (or `sam build && sam deploy`). Updating only the Lambda env vars is not enough — the IAM policy ARNs must also be updated via a redeploy.

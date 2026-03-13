@@ -366,7 +366,8 @@ EventBridge cron(0 3 * * ? *)   →   Lambda (agent.lambda_handler)
 | UAC / permission error during setup | Right-click `setup.bat` → **Run as administrator** |
 | No YouTube results | Tavily indexes YouTube — results depend on availability for that query and week |
 | `Failed to send email` in log | Check `SMTP_USER` is your Gmail address (not custom domain); verify App Password is correct |
-| SES email not delivered | `EMAIL_FROM` must NOT be a `@gmail.com` address in AWS/SES mode — use a custom domain address that is SES-verified (e.g. `digest@yourdomain.com`) |
+| SES `AccessDenied` on send | Both `EMAIL_FROM` and `EMAIL_TO` must be SES-verified identities, and both must be present in the IAM policy. If you change either address, redeploy with `deploy.bat` — updating only the Lambda env var is not enough. |
+| SES email not delivered | Verify both `EMAIL_FROM` and `EMAIL_TO` in SES Console → Verified identities. In sandbox mode, both sender and recipient must be verified. |
 | Email arrives but looks broken | Ensure your email client renders HTML; try a different client |
 | Email not arriving at all | Check spam folder; verify `EMAIL_TO` is correct in `.env` |
 | `sam build` fails — Python version error | Install Python 3.12 and add to PATH, or use `sam build --use-container` (requires Docker) |

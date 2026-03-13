@@ -157,11 +157,11 @@ All resources are defined in `template.yaml` and deployed via SAM.
 | `AWSLambdaBasicExecutionRole` (managed) | CloudWatch Logs | Write function logs to CloudWatch |
 | `s3:PutObject`, `s3:GetObject` | `arn:aws:s3:::ai-news-agent-reports-<AccountId>/*` | Upload HTML report, read existing reports |
 | `s3:ListBucket` | `arn:aws:s3:::ai-news-agent-reports-<AccountId>` | Required for `head_object` to return 404 (not 403) on missing keys — enables idempotency check |
-| `ses:SendRawEmail` | `arn:aws:ses:us-east-1:<AccountId>:identity/<EmailFrom>` | Send the HTML digest via SES — scoped to the configured sender identity only |
+| `ses:SendRawEmail` | `arn:aws:ses:us-east-1:<AccountId>:identity/<EmailFrom>` and `arn:aws:ses:us-east-1:<AccountId>:identity/<EmailTo>` | Send the HTML digest via SES — scoped to both the sender and recipient identities. SES checks IAM authorization against both when the recipient is a verified identity in the same account. |
 
 > **Note:** `s3:ListBucket` must be on the bucket ARN (not `/*`) to allow `head_object` to distinguish "file not found" (404) from "access denied" (403). Without it, the idempotency check would raise an exception on the first run of each day.
 
-> **SES IAM scope:** The `ses:SendRawEmail` permission is intentionally restricted to the single `EmailFrom` identity configured at deploy time. If you change the `EMAIL_FROM` Lambda environment variable to a different address, you **must** also redeploy (`deploy.bat` or `sam build && sam deploy`) so the IAM policy ARN is updated to match the new sender address. Updating only the Lambda environment variable without redeploying will cause SES to reject the send with an `AuthorizationError`.
+> **SES IAM scope:** The `ses:SendRawEmail` permission is scoped to both the `EmailFrom` and `EmailTo` identities configured at deploy time. SES checks IAM authorization against both sender and recipient when the recipient address is a verified identity in the same AWS account. If you change either `EMAIL_FROM` or `EMAIL_TO`, you **must** redeploy (`deploy.bat` or `sam build && sam deploy`) so the IAM policy ARNs are updated. Updating only the Lambda environment variables without redeploying will cause SES to reject the send with an `AccessDenied` error.
 
 ---
 
