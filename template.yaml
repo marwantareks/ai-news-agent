@@ -94,12 +94,12 @@ Resources:
       CodeUri: .
       Role: !GetAtt AgentExecutionRole.Arn
       Events:
-        DailySchedule:
+        WeeklySchedule:
           Type: Schedule
           Properties:
-            Schedule: cron(0 3 * * ? *)
-            Name: ai-news-agent-daily
-            Description: Run AI news agent daily at 03:00 UTC
+            Schedule: cron(0 3 ? * TUE,FRI *)
+            Name: ai-news-agent-weekly
+            Description: Run AI news agent on Tuesdays and Fridays at 03:00 UTC
             Enabled: true
 
 Outputs:

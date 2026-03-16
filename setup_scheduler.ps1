@@ -1,9 +1,9 @@
 # setup_scheduler.ps1
-# Run once (as Administrator) to register the daily Task Scheduler job.
-# It will run at 3:00 AM GMT every day.
+# Run once (as Administrator) to register the Task Scheduler job.
+# It will run at 3:00 AM GMT every Tuesday and Friday.
 # If the laptop was off at 3 AM, it runs automatically at next startup.
 
-$taskName   = "AI-News-Agent-Daily"
+$taskName   = "AI-News-Agent-Weekly"
 $projectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $batFile    = Join-Path $projectDir "run_agent.bat"
 
@@ -30,9 +30,13 @@ $xml = @"
       <StartBoundary>2026-01-01T${triggerTime}:00</StartBoundary>
       <ExecutionTimeLimit>PT30M</ExecutionTimeLimit>
       <Enabled>true</Enabled>
-      <ScheduleByDay>
-        <DaysInterval>1</DaysInterval>
-      </ScheduleByDay>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Tuesday/>
+          <Friday/>
+        </DaysOfWeek>
+      </ScheduleByWeek>
     </CalendarTrigger>
   </Triggers>
   <Settings>
@@ -61,14 +65,15 @@ $xml = @"
 $tmpXml = Join-Path $env:TEMP "ai-news-task.xml"
 $xml | Out-File -FilePath $tmpXml -Encoding Unicode
 
-# Remove existing task if present
+# Remove existing tasks (old daily name and current name) if present
+schtasks /delete /tn "AI-News-Agent-Daily" /f 2>$null | Out-Null
 schtasks /delete /tn $taskName /f 2>$null | Out-Null
 
 schtasks /create /tn $taskName /xml $tmpXml /f
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
     Write-Host "Task '$taskName' registered successfully." -ForegroundColor Green
-    Write-Host "- Runs daily at $triggerTime local time (03:00 GMT)"
+    Write-Host "- Runs Tuesdays and Fridays at $triggerTime local time (03:00 GMT)"
     Write-Host "- Runs on next startup if the scheduled time was missed"
     Write-Host "- Reports saved to: $projectDir\reports\"
 } else {

@@ -17,7 +17,7 @@ Or use the wrapper script (activates venv automatically):
 run_agent.bat
 ```
 
-The agent skips generation and exits 0 if today's report already exists in `reports/`.
+The agent skips generation and exits 0 if today's report already exists in `reports/` (local) or S3 (AWS mode). To force a re-run, delete `reports/YYYY-MM-DD-ai-learning.html` locally or the corresponding S3 key.
 
 ## Architecture
 
@@ -29,7 +29,7 @@ Everything lives in a single file: **`agent.py`**. The pipeline has four sequent
 
 3. **Generate** (`generate_html`) — Merges the two JSON summaries and renders a fully self-contained HTML file (inline CSS + no external dependencies) into `reports/YYYY-MM-DD-ai-learning.html`.
 
-4. **Email** (`send_email`) — Sends the HTML file as the email body via `smtplib.SMTP_SSL`. Skipped silently if any `EMAIL_*` env var is missing.
+4. **Email** — In local mode: `send_email()` sends via `smtplib.SMTP_SSL` (port 465). In AWS mode: `aws_send_email()` sends via Amazon SES. Both are skipped silently if `EMAIL_TO`/`EMAIL_FROM` are not set. The mode is determined by whether `S3_BUCKET` is set.
 
 ## Topics / Sections
 
@@ -47,9 +47,13 @@ Required:
 - `ANTHROPIC_API_KEY`
 - `TAVILY_API_KEY`
 
-Optional (email delivery):
+Optional (local email delivery):
 - `EMAIL_TO`, `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT` (default 465), `SMTP_USER`, `SMTP_PASSWORD`
 - `SMTP_USER` must be the Gmail address, even when `EMAIL_FROM` is a custom domain.
+
+Optional (AWS mode):
+- `S3_BUCKET` — when set, switches to AWS mode: reports go to S3, email via SES, no local file log
+- `SES_REGION` (default `us-east-1`)
 
 ## Model
 
@@ -59,9 +63,13 @@ The curate stage uses **`claude-haiku-4-5-20251001`** (hardcoded in `summarize_s
 
 Logs go to both stdout and `agent.log` (appended, UTF-8). Check `agent.log` after a run to verify email delivery or diagnose search/Claude errors.
 
+## Lambda Configuration
+
+Defined in `template.yaml`: 300s timeout, 256MB memory, Python 3.12. S3 reports expire after 90 days (lifecycle rule on `ReportsBucket`). The EventBridge schedule runs on Tuesdays and Fridays at `cron(0 3 ? * TUE,FRI *)` (03:00 UTC).
+
 ## Scheduler
 
-`setup.bat` registers a Windows Task Scheduler job (`AI-News-Agent-Daily`) via `setup_scheduler.ps1` that runs `run_agent.bat` daily at 03:00 UTC. The task is configured to run on next startup if the machine was off at trigger time.
+`setup.bat` registers a Windows Task Scheduler job (`AI-News-Agent-Weekly`) via `setup_scheduler.ps1` that runs `run_agent.bat` on Tuesdays and Fridays at 03:00 UTC. The task is configured to run on next startup if the machine was off at trigger time.
 
 ## Security
 
