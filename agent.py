@@ -48,7 +48,7 @@ TOPICS = [
         "section": "developer",
         "color":   "#10a37f",
         "queries": [
-            "AI agents ReAct tool use memory planning tutorial explained 2025",
+            "AI agents autonomous tool use memory planning tutorial explained 2025",
             "site:youtube.com AI agents how they work tool use memory tutorial",
         ],
     },
@@ -193,8 +193,10 @@ def summarize_section(client, all_results: dict, topic_names: list,
     search_text = "\n".join(lines)
 
     cotd_instruction = (
-        '- Produce a "concept_of_the_day": pick ONE important concept and explain it '
-        "in exactly 3 plain-English sentences a developer or architect new to AI can understand.\n"
+        '- Produce a "concept_of_the_day": pick ONE important concept from the search results '
+        "that best represents the most interesting or emerging idea this week. "
+        "Vary the topic — do NOT default to the same concept every time (e.g. avoid always picking the ReAct loop). "
+        "Explain it in exactly 3 plain-English sentences a developer or architect new to AI can understand.\n"
         if include_cotd else
         '- Set "concept_of_the_day" to {"title": "", "explanation": ""}.\n'
     )
@@ -518,10 +520,10 @@ def generate_html(summary: dict, date_str: str) -> str:
       <p>Generated {date_str} &nbsp;·&nbsp; {total_resources} resources &nbsp;·&nbsp; {dev_count} developer &nbsp;·&nbsp; {arch_count} architect</p>
     </header>
 
-    <div class="cotd">
-      <div class="cotd-label">Concept of the Day</div>
-      <h2>{cotd_title}</h2>
-      <p>{cotd_explanation}</p>
+    <div class="cotd" style="background:#667eea;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border-radius:10px;padding:1.4rem 1.6rem;margin-bottom:2rem;">
+      <div class="cotd-label" style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;opacity:.75;margin-bottom:.4rem;">Concept of the Day</div>
+      <h2 style="font-size:1.1rem;margin-bottom:.55rem;color:#fff;">{cotd_title}</h2>
+      <p style="font-size:.91rem;line-height:1.7;opacity:.93;color:#fff;">{cotd_explanation}</p>
     </div>
 
     {section_html("developer", dev_cards, dev_count)}
