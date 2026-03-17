@@ -133,19 +133,19 @@ Use the CloudWatch log filter bar to search for specific text, for example:
 
 ## 6. Daily Schedule
 
-The agent runs automatically every day at **03:00 UTC** (no action needed from you).
+The agent runs automatically every **Tuesday and Friday at 03:00 UTC** (no action needed from you).
 
 | UTC Time | Example in other timezones |
 |---|---|
-| 03:00 UTC | 10:00 PM EST (previous day) |
-| 03:00 UTC | 05:00 AM CET |
-| 03:00 UTC | 11:00 AM SGT |
+| 03:00 UTC Tuesday/Friday | 10:00 PM EST (Monday/Thursday) |
+| 03:00 UTC Tuesday/Friday | 05:00 AM CET (Tuesday/Friday) |
+| 03:00 UTC Tuesday/Friday | 11:00 AM SGT (Tuesday/Friday) |
 
-You should receive your email digest within a few minutes of 03:00 UTC each day.
+You should receive your email digest within a few minutes of 03:00 UTC on Tuesdays and Fridays.
 
 If the Lambda does not run at the expected time, check:
 
-1. AWS Console → **EventBridge** → **Rules** → `ai-news-agent-daily` → confirm status is **Enabled**.
+1. AWS Console → **EventBridge** → **Rules** → `ai-news-agent-weekly` → confirm status is **Enabled**.
 2. Check CloudWatch logs for any error from the last scheduled run.
 
 ---
@@ -206,5 +206,5 @@ If you want to use a different `EMAIL_FROM` address in the future:
 | **Agent skipped (no new report)** | Check CloudWatch logs for `already exists in S3. Skipping.` — this is normal. Delete today's S3 file and re-run to force a fresh report. |
 | **SES `MessageRejected` error in logs** | The `EMAIL_TO` address is not verified in SES. Verify it (see Section 8). |
 | **SES `InvalidClientTokenId` error** | AWS credentials for the Lambda role are wrong or expired. Check the IAM role `ai-news-agent-lambda-role` has `ses:SendRawEmail` permission. |
-| **EventBridge not triggering** | Console → EventBridge → Rules → `ai-news-agent-daily` → confirm it is **Enabled**. |
+| **EventBridge not triggering** | Console → EventBridge → Rules → `ai-news-agent-weekly` → confirm it is **Enabled**. |
 | **Report renders with broken layout in email** | Your email client may not support full HTML/CSS. Download the file from S3 and open it in a browser for the full experience. |

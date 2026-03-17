@@ -15,8 +15,8 @@ The AI Learning Digest Agent is a Python application that runs daily to produce 
 | Web Search | Tavily API | `tavily-python` client |
 | AWS Functions | boto3 | S3 storage, SES email |
 | Infrastructure as Code | AWS SAM | `template.yaml` |
-| Scheduler (local) | Windows Task Scheduler | Daily at 03:00 UTC via `setup_scheduler.ps1` |
-| Scheduler (AWS) | Amazon EventBridge | `cron(0 3 * * ? *)` |
+| Scheduler (local) | Windows Task Scheduler | Tuesdays and Fridays at 03:00 UTC via `setup_scheduler.ps1` |
+| Scheduler (AWS) | Amazon EventBridge | `cron(0 3 ? * TUE,FRI *)` |
 | Report Storage (local) | Local filesystem | `reports/YYYY-MM-DD-ai-learning.html` |
 | Report Storage (AWS) | Amazon S3 | Bucket: `ai-news-agent-reports-<AccountId>` |
 | Email (local) | `smtplib.SMTP_SSL` | Port 465, Gmail App Password |
@@ -56,8 +56,8 @@ ai-news-agent/
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         TRIGGER                                 │
-│  Local: Windows Task Scheduler (03:00 UTC, run_agent.bat)       │
-│  AWS:   EventBridge cron(0 3 * * ? *) → lambda_handler()        │
+│  Local: Windows Task Scheduler (Tue/Fri 03:00 UTC, run_agent.bat) │
+│  AWS:   EventBridge cron(0 3 ? * TUE,FRI *) → lambda_handler()   │
 └─────────────────────────────┬───────────────────────────────────┘
                               │
                               ▼
@@ -146,7 +146,7 @@ All resources are defined in `template.yaml` and deployed via SAM.
 | Resource | Type | Details |
 |---|---|---|
 | `AgentFunction` | `AWS::Serverless::Function` | Name: `ai-news-agent`, handler: `agent.lambda_handler`, runtime: `python3.12`, memory: 256 MB, timeout: 300s |
-| `DailySchedule` | EventBridge Schedule (SAM `Events`) | `cron(0 3 * * ? *)` — fires daily at 03:00 UTC |
+| `WeeklySchedule` | EventBridge Schedule (SAM `Events`) | `cron(0 3 ? * TUE,FRI *)` — fires Tuesdays and Fridays at 03:00 UTC |
 | `ReportsBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-reports-<AccountId>`, lifecycle: delete objects after 90 days |
 | `AgentExecutionRole` | `AWS::IAM::Role` | Name: `ai-news-agent-lambda-role` |
 

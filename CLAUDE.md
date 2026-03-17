@@ -2,6 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Setup (first time)
+
+```bat
+setup.bat
+```
+
+This creates the venv, installs `requirements.txt`, and registers the Windows Task Scheduler job. To do it manually:
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Copy `.env.example` to `.env` (if present) or create `.env` with at minimum `ANTHROPIC_API_KEY` and `TAVILY_API_KEY`.
+
 ## Running the Agent
 
 ```bash
@@ -62,6 +78,16 @@ The curate stage uses **`claude-haiku-4-5-20251001`** (hardcoded in `summarize_s
 ## Logging
 
 Logs go to both stdout and `agent.log` (appended, UTF-8). Check `agent.log` after a run to verify email delivery or diagnose search/Claude errors.
+
+## AWS Deployment
+
+```bat
+deploy.bat
+```
+
+Loads `.env` vars, then runs `sam build && sam deploy --capabilities CAPABILITY_NAMED_IAM --resolve-s3`. Passes `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `EMAIL_FROM`, and `EMAIL_TO` as SAM parameter overrides. Requires AWS SAM CLI and configured AWS credentials (`aws configure`).
+
+After first deploy, subsequent runs skip `--guided` and reuse the saved config in `samconfig.toml`.
 
 ## Lambda Configuration
 

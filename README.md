@@ -1,6 +1,6 @@
 # AI Learning Digest Agent
 
-A lightweight daily agent that curates the best articles and YouTube videos published in the last 7 days — organized into a **Developer Track** and an **Architect Track** — and delivered as a clean, self-contained HTML report.
+A lightweight twice-weekly agent that curates the best articles and YouTube videos published in the last 7 days — organized into a **Developer Track** and an **Architect Track** — and delivered as a clean, self-contained HTML report.
 
 ---
 
@@ -15,7 +15,7 @@ A lightweight daily agent that curates the best articles and YouTube videos publ
 
 ## Objective
 
-Keep up with the fast-moving AI landscape without spending hours searching. Each morning the agent:
+Keep up with the fast-moving AI landscape without spending hours searching. Every Tuesday and Friday morning the agent:
 
 1. Searches the web **and YouTube** for fresh educational content across 10 AI topics.
 2. Uses Claude Haiku to curate the best resources per track and explain why each one is worth your time.
@@ -57,8 +57,8 @@ The agent runs in two modes — local (your Windows machine) or AWS (fully serve
 ```
 LOCAL MODE                            AWS MODE
 ──────────────────────────            ────────────────────────────────────
-Windows Task Scheduler                EventBridge cron(0 3 * * ? *)
-(daily at 03:00 UTC)                  (daily at 03:00 UTC)
+Windows Task Scheduler                EventBridge cron(0 3 ? * TUE,FRI *)
+(Tue/Fri at 03:00 UTC)                (Tue/Fri at 03:00 UTC)
         │                                      │
         ▼                                      ▼
   run_agent.bat                     Lambda: agent.lambda_handler()
@@ -204,7 +204,7 @@ setup.bat
 This will:
 - Create a Python virtual environment (`venv/`)
 - Install all dependencies from `requirements.txt`
-- Register a **Windows Task Scheduler** job (`AI-News-Agent-Daily`) that runs every day at **03:00 GMT**
+- Register a **Windows Task Scheduler** job (`AI-News-Agent-Weekly`) that runs every Tuesday and Friday at **03:00 UTC**
 - If your PC was off at 03:00, the task runs automatically on next startup
 
 > **Note:** The scheduler step may show a UAC prompt — click **Yes**.
@@ -340,7 +340,7 @@ sam build && sam deploy
 ### How it runs on AWS
 
 ```
-EventBridge cron(0 3 * * ? *)   →   Lambda (agent.lambda_handler)
+EventBridge cron(0 3 ? * TUE,FRI *)   →   Lambda (agent.lambda_handler)
                                          │
                               ┌──────────┴──────────────────┐
                               │  1. Tavily search (20 calls) │
@@ -362,7 +362,7 @@ EventBridge cron(0 3 * * ? *)   →   Lambda (agent.lambda_handler)
 | `Dependencies missing` error | Run `setup.bat` first |
 | `Missing API keys` error | Check your `.env` file has both keys |
 | Report not generated | Check `agent.log` for details |
-| Scheduled task not running | Open Task Scheduler, find `AI-News-Agent-Daily`, run it manually to test |
+| Scheduled task not running | Open Task Scheduler, find `AI-News-Agent-Weekly`, run it manually to test |
 | UAC / permission error during setup | Right-click `setup.bat` → **Run as administrator** |
 | No YouTube results | Tavily indexes YouTube — results depend on availability for that query and week |
 | `Failed to send email` in log | Check `SMTP_USER` is your Gmail address (not custom domain); verify App Password is correct |
@@ -378,4 +378,4 @@ EventBridge cron(0 3 * * ? *)   →   Lambda (agent.lambda_handler)
 | Report not in S3 after Lambda invoke | Check CloudWatch logs `/aws/lambda/ai-news-agent` for API key errors or Tavily failures |
 | Lambda timeout | Typical run is 60–90 s. If timing out at 300 s, check for network issues in CloudWatch log |
 | `AWS_REGION` conflict in template | Do not set `AWS_REGION` in `template.yaml` — Lambda reserves it. Use `SES_REGION` (already handled in the provided template) |
-| EventBridge not triggering | Console → EventBridge → Rules → `ai-news-agent-daily` → confirm Enabled |
+| EventBridge not triggering | Console → EventBridge → Rules → `ai-news-agent-weekly` → confirm Enabled |
