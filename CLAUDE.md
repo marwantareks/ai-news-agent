@@ -45,7 +45,7 @@ Everything lives in a single file: **`agent.py`**. The pipeline has four sequent
 
 3. **Generate** (`generate_html`) — Merges the two JSON summaries and renders a fully self-contained HTML file (inline CSS + no external dependencies) into `reports/YYYY-MM-DD-ai-learning.html`.
 
-4. **Email** — In local mode: `send_email()` sends via `smtplib.SMTP_SSL` (port 465). In AWS mode: `aws_send_email()` sends via Amazon SES. Both are skipped silently if `EMAIL_TO`/`EMAIL_FROM` are not set. The mode is determined by whether `S3_BUCKET` is set.
+4. **Email** — `send_email()` sends via the Resend HTTP API in both local and AWS modes. Skipped silently if `EMAIL_TO`, `EMAIL_FROM`, or `RESEND_API_KEY` are not set. The mode is determined by whether `S3_BUCKET` is set (controls S3 upload vs. local file write).
 
 ## Topics / Sections
 
@@ -63,13 +63,13 @@ Required:
 - `ANTHROPIC_API_KEY`
 - `TAVILY_API_KEY`
 
-Optional (local email delivery):
-- `EMAIL_TO`, `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT` (default 465), `SMTP_USER`, `SMTP_PASSWORD`
-- `SMTP_USER` must be the Gmail address, even when `EMAIL_FROM` is a custom domain.
+Optional (email delivery — local and AWS):
+- `EMAIL_TO` — comma-separated BCC recipients (e.g. `a@example.com,b@example.com`)
+- `EMAIL_FROM` — must be an address on a domain verified in your Resend account
+- `RESEND_API_KEY` — API key from resend.com. Passed to Lambda as the `ResendApiKey` SAM parameter via `deploy.bat`.
 
 Optional (AWS mode):
-- `S3_BUCKET` — when set, switches to AWS mode: reports go to S3, email via SES, no local file log
-- `SES_REGION` (default `us-east-1`)
+- `S3_BUCKET` — when set, switches to AWS mode: reports go to S3, no local file log. Set automatically by `template.yaml` in Lambda — do not add to `.env`.
 
 ## Model
 
@@ -85,7 +85,9 @@ In local mode: logs go to both stdout and `agent.log` (appended, UTF-8). In AWS 
 deploy.bat [stack-name] [region]
 ```
 
-Defaults to stack `ai-news-agent` in `us-east-1`. Loads `.env` vars, then runs `sam build && sam deploy --capabilities CAPABILITY_NAMED_IAM --resolve-s3`. Passes `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `EMAIL_FROM`, and `EMAIL_TO` as SAM parameter overrides. Requires AWS SAM CLI and configured AWS credentials (`aws configure`).
+Defaults to stack `ai-news-agent` in `us-east-1`. Auto-loads `.env` at startup, then runs `sam build && sam deploy --capabilities CAPABILITY_NAMED_IAM --resolve-s3`. Passes `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `EMAIL_FROM`, `EMAIL_TO`, and `RESEND_API_KEY` as SAM parameter overrides. Requires AWS SAM CLI and configured AWS credentials (`aws configure`).
+
+**Important:** Run `deploy.bat` from an existing cmd window (`cd C:\MyProjects\ai-news-agent && deploy.bat`), not by double-clicking. SAM CLI calls `exit` (not `exit /b`) internally — `deploy.bat` wraps both `sam build` and `sam deploy` with `cmd /c` to prevent this from killing the parent shell.
 
 After first deploy, subsequent runs reuse the saved config in `samconfig.toml`.
 
@@ -105,7 +107,5 @@ All external-sourced values (from Claude JSON and Tavily) are escaped before HTM
 - `_safe_url()` validates URL scheme — only `http`/`https` pass through; others become `#`
 - `rtype` and `difficulty` are allowlisted to known values before use as CSS class names
 
-### SES IAM scope (`template.yaml`)
-`ses:SendRawEmail` is granted on both `arn:aws:ses:us-east-1:${AWS::AccountId}:identity/${EmailFrom}` and `arn:aws:ses:us-east-1:${AWS::AccountId}:identity/${EmailTo}`. SES checks IAM authorization against both when the recipient is a verified identity in the same account.
-
-**If you change `EMAIL_FROM` or `EMAIL_TO`:** update `.env` and run `deploy.bat` (or `sam build && sam deploy`). Updating only the Lambda env vars is not enough — the IAM policy ARNs must also be updated via a redeploy.
+### Resend API key (`template.yaml`)
+`RESEND_API_KEY` is passed as a Lambda env var via the `ResendApiKey` SAM parameter (marked `NoEcho`). Email uses the Resend HTTP API in both local and AWS modes — no SES IAM permissions required.

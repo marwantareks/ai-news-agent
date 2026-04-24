@@ -178,20 +178,15 @@ Create a file named `.env` in the project root:
 ANTHROPIC_API_KEY=sk-ant-...
 TAVILY_API_KEY=tvly-...
 
-# Email delivery (optional — leave blank to disable)
+# Email delivery via Resend (optional — leave blank to disable)
 EMAIL_TO=you@example.com
-EMAIL_FROM=you@gmail.com
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=465
-SMTP_USER=you@gmail.com
-SMTP_PASSWORD=your-16-char-app-password
+EMAIL_FROM=digest@your-verified-domain.com
+RESEND_API_KEY=re_...
 ```
 
-> **Gmail App Password:** Go to myaccount.google.com → Security → 2-Step Verification → App passwords. Generate a password for "Mail" and paste it as `SMTP_PASSWORD`. Never use your main Google account password here.
+> **Resend setup:** Sign up at [resend.com](https://resend.com), create an API key, and verify your sending domain. `EMAIL_FROM` must be on a domain verified in your Resend account. For quick testing, use `onboarding@resend.dev` (Resend's shared sender — can only deliver to your Resend account's registered email address).
 >
-> `SMTP_USER` must always be your **Gmail address** (e.g. `you@gmail.com`), even if `EMAIL_FROM` is a custom domain routed through Gmail.
->
-> If any `EMAIL_*` variable is left blank the agent skips email silently and just saves the HTML file as normal.
+> If any of `EMAIL_TO`, `EMAIL_FROM`, or `RESEND_API_KEY` is blank the agent skips email silently and just saves the HTML file as normal.
 
 ### 3. Run the one-time setup
 
@@ -277,7 +272,8 @@ ai-news-agent/
 | `anthropic` | Claude Haiku API client for curation and summarisation |
 | `tavily-python` | Web + YouTube search API client |
 | `python-dotenv` | Loads `.env` file into environment variables |
-| `boto3` | AWS SDK — used for S3 and SES in cloud deployment mode |
+| `boto3` | AWS SDK — used for S3 in cloud deployment mode |
+| `resend` | Resend HTTP API client — email delivery in both local and AWS modes |
 
 ### Environment variables
 
@@ -285,16 +281,12 @@ ai-news-agent/
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude Haiku |
 | `TAVILY_API_KEY` | Yes | Tavily search API key |
-| `EMAIL_TO` | No | Recipient email address |
-| `EMAIL_FROM` | No | Sender email address |
-| `SMTP_HOST` | No | SMTP server (local mode only, default: smtp.gmail.com) |
-| `SMTP_PORT` | No | SMTP port (local mode only, default: 465) |
-| `SMTP_USER` | No | Gmail address for SMTP auth (local mode only) |
-| `SMTP_PASSWORD` | No | Gmail App Password (local mode only) |
-| `S3_BUCKET` | AWS mode | S3 bucket name. When set, enables AWS mode: S3 storage + SES email. Set automatically by `template.yaml`. |
-| `SES_REGION` | AWS mode | AWS region for SES client (default: us-east-1). Do NOT use `AWS_REGION` — reserved by Lambda. |
+| `EMAIL_TO` | No | Comma-separated recipient email addresses |
+| `EMAIL_FROM` | No | Sender address — must be on a Resend-verified domain |
+| `RESEND_API_KEY` | No | Resend API key — required for email delivery |
+| `S3_BUCKET` | AWS mode | S3 bucket name. When set, enables AWS mode: S3 storage. Set automatically by `template.yaml`. |
 
-> `S3_BUCKET` and `SES_REGION` are set automatically by `template.yaml` when deployed to Lambda. Do not add them to your local `.env`.
+> `S3_BUCKET` is set automatically by `template.yaml` when deployed to Lambda. Do not add it to your local `.env`.
 
 ---
 
@@ -311,15 +303,25 @@ The agent can run as an AWS Lambda function triggered daily by EventBridge, stor
 
 ### One-time AWS setup
 
-1. **Create IAM user** with `AdministratorAccess` in the AWS Console. Generate an access key, then run `aws configure` (region: `us-east-1`, output: `json`).
-2. **Verify sender email** in Amazon SES (us-east-1): Console → SES → Verified identities → Create identity → Email address. Click the link in the verification email AWS sends.
-3. **Verify recipient email** the same way (required in SES sandbox mode).
+**1. Configure AWS credentials**
+
+Create an IAM user with `AdministratorAccess` in the AWS Console. Generate an access key (Access Key ID + Secret Access Key), then run:
+
+```bash
+aws configure
+```
+
+Enter your Access Key ID, Secret Access Key, default region (`us-east-1`), and output format (`json`). This stores credentials in `~/.aws/credentials` and is used by both the AWS CLI and SAM during deployment.
+
+**2. Set up Resend**
+
+Sign up at [resend.com](https://resend.com), create an API key, and verify your sending domain. Add `RESEND_API_KEY` to your `.env` file.
 
 > Do NOT manually create the S3 bucket, Lambda function, or EventBridge rule — SAM creates everything automatically.
 
 ### Deploy
 
-**Windows helper (reads API keys from your `.env` automatically):**
+**Windows helper — automatically loads your `.env` file and passes all keys as SAM parameters:**
 
 ```bat
 deploy.bat
@@ -347,7 +349,7 @@ EventBridge cron(0 3 ? * TUE,FRI *)   →   Lambda (agent.lambda_handler)
                               │  2. Claude Haiku (2 calls)   │
                               │  3. Generate HTML            │
                               │  4. Upload to S3             │
-                              │  5. Send via SES             │
+                              │  5. Send via Resend API      │
                               └─────────────────────────────┘
 ```
 
@@ -365,17 +367,14 @@ EventBridge cron(0 3 ? * TUE,FRI *)   →   Lambda (agent.lambda_handler)
 | Scheduled task not running | Open Task Scheduler, find `AI-News-Agent-Weekly`, run it manually to test |
 | UAC / permission error during setup | Right-click `setup.bat` → **Run as administrator** |
 | No YouTube results | Tavily indexes YouTube — results depend on availability for that query and week |
-| `Failed to send email` in log | Check `SMTP_USER` is your Gmail address (not custom domain); verify App Password is correct |
-| SES `AccessDenied` on send | Both `EMAIL_FROM` and `EMAIL_TO` must be SES-verified identities, and both must be present in the IAM policy. If you change either address, redeploy with `deploy.bat` — updating only the Lambda env var is not enough. |
-| SES email not delivered | Verify both `EMAIL_FROM` and `EMAIL_TO` in SES Console → Verified identities. In sandbox mode, both sender and recipient must be verified. |
+| `Resend send failed` in log | Check `RESEND_API_KEY` is valid and `EMAIL_FROM` is on a Resend-verified domain. Check Resend dashboard → Logs for delivery details. |
+| Email not delivered | Check spam folder. Verify `EMAIL_TO` and `EMAIL_FROM` are correct. Confirm `RESEND_API_KEY` is set in Lambda env vars. |
 | Email arrives but looks broken | Ensure your email client renders HTML; try a different client |
-| Email not arriving at all | Check spam folder; verify `EMAIL_TO` is correct in `.env` |
 | `sam build` fails — Python version error | Install Python 3.12 and add to PATH, or use `sam build --use-container` (requires Docker) |
 | `sam deploy` fails — `CAPABILITY_NAMED_IAM` | Ensure `capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"` is in `samconfig.toml` |
+| `deploy.bat` stops after build with no error | Run from an existing cmd window (`cd C:\MyProjects\ai-news-agent && deploy.bat`), not by double-clicking |
 | Lambda `PermissionError` on log file | `S3_BUCKET` env var not set in Lambda — FileHandler is trying to write to the read-only package directory |
-| SES `MessageRejected` | Recipient not verified in SES sandbox. Verify in Console → SES → Verified identities |
-| SES `InvalidClientTokenId` | AWS credentials wrong or expired. Re-run `aws configure` |
+| AWS credentials expired | Re-run `aws configure` with fresh Access Key ID and Secret Access Key from the IAM Console |
 | Report not in S3 after Lambda invoke | Check CloudWatch logs `/aws/lambda/ai-news-agent` for API key errors or Tavily failures |
 | Lambda timeout | Typical run is 60–90 s. If timing out at 300 s, check for network issues in CloudWatch log |
-| `AWS_REGION` conflict in template | Do not set `AWS_REGION` in `template.yaml` — Lambda reserves it. Use `SES_REGION` (already handled in the provided template) |
 | EventBridge not triggering | Console → EventBridge → Rules → `ai-news-agent-weekly` → confirm Enabled |

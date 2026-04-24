@@ -23,13 +23,13 @@ These are the settings that control how the agent works. They are stored in AWS 
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Your Claude API key — the agent uses Claude to curate and rank resources | `sk-ant-api03-...` |
 | `TAVILY_API_KEY` | Your Tavily search API key — the agent uses this to search the web and YouTube | `tvly-...` |
-| `EMAIL_TO` | The email address where your daily digest is sent | `you@example.com` |
+| `EMAIL_TO` | The email address(es) where your digest is sent (comma-separated for multiple) | `you@example.com` |
 | `EMAIL_FROM` | The sender address shown in the "From" field of the email | `digest@yourdomain.com` |
-| `SES_REGION` | The AWS region used to send email (default: `us-east-1`) | `us-east-1` |
+| `RESEND_API_KEY` | Your Resend API key — used to send the HTML email via the Resend HTTP API | `re_...` |
 
-> **Important:** `EMAIL_FROM` must be a verified identity in Amazon SES. Do **not** use a `@gmail.com` address for `EMAIL_FROM` — Gmail addresses are not supported as SES senders. Use a custom domain address that you have verified in SES (see [Section 8](#8-ses-email-verification) for how to verify an address).
+> **Important:** `EMAIL_FROM` must be an address on a domain you have verified in your [Resend](https://resend.com) account. Free Resend accounts include a shared `onboarding@resend.dev` sender for testing. For production use, add and verify your own domain in the Resend dashboard.
 
-> **Changing `EMAIL_FROM`:** The Lambda IAM policy is scoped to the specific sender address set at deploy time. If you update `EMAIL_FROM` to a different address, you must also **redeploy the stack** (`deploy.bat` on Windows, or `sam build && sam deploy`) so the IAM policy ARN is updated. Updating the Lambda environment variable alone is not enough — SES will reject the send with an `AuthorizationError` until the policy is redeployed.
+> **Changing `EMAIL_FROM` or `EMAIL_TO`:** Unlike SES, Resend does not require IAM policy updates when changing addresses. Simply update `EMAIL_FROM` or `EMAIL_TO` in your `.env` file and run `deploy.bat` to push the new values to Lambda.
 
 ---
 
@@ -116,10 +116,10 @@ The agent logs every step of its run to AWS CloudWatch.
 | `Generative AI Fundamentals -> 5 results` | Tavily search completed for a topic |
 | `Curating Developer Track with Claude Haiku...` | Claude curation starting |
 | `Report uploaded to s3://...` | HTML report saved to S3 |
-| `Report emailed via SES to you@example.com` | Email sent successfully |
+| `Report emailed via Resend to you@example.com` | Email sent successfully |
 | `Report for YYYY-MM-DD already exists in S3. Skipping.` | Agent skipped — already ran today (normal behavior) |
 | `WARNING ... query '...' failed` | One Tavily search failed — not fatal, run continues |
-| `ERROR SES send failed` | Email failed — report is still in S3; check SES configuration |
+| `ERROR Resend send failed` | Email failed — report is still in S3; check `RESEND_API_KEY` and `EMAIL_FROM` domain |
 | `ERROR Missing API keys` | API keys not set or incorrect |
 
 ### Filtering logs
@@ -165,33 +165,35 @@ This means:
 
 ---
 
-## 8. SES Email Verification
+## 8. Resend Email Setup
 
-Amazon SES requires both the **sender** (`EMAIL_FROM`) and the **recipient** (`EMAIL_TO`) email addresses to be verified before it will deliver email. This is a one-time setup per address.
+The agent sends email via [Resend](https://resend.com) — a developer-friendly email API that works for both local and AWS modes without any IAM configuration.
 
-### How to verify an email address in SES
+### One-time setup
 
-1. In the AWS Console, search for **SES** (or "Simple Email Service") and click it.
-2. Make sure you are in the **US East (N. Virginia)** region (top-right corner of the console).
-3. In the left sidebar, click **Verified identities**.
-4. Click **Create identity**.
-5. Select **Email address**, enter the address, and click **Create identity**.
-6. AWS will send a verification email to that address. Open it and click the link.
-7. The identity status changes to **Verified**. Done.
+1. Sign up at [resend.com](https://resend.com) and create an API key in the Resend dashboard.
+2. Add the key to your `.env` file as `RESEND_API_KEY=re_...`.
+3. Set `EMAIL_FROM` to a sender address on a domain you own and have verified in Resend (see below).
 
-Repeat for both `EMAIL_FROM` and `EMAIL_TO` if they are different addresses.
+### How to verify a sending domain in Resend
 
-> **Note:** If your account is still in SES Sandbox mode, both sender and recipient must be verified. To send to any unverified address, request SES production access via Console → SES → Account dashboard → Request production access.
+1. In the Resend dashboard, go to **Domains** → **Add Domain**.
+2. Enter your domain (e.g. `yourdomain.com`) and click **Add**.
+3. Resend shows you DNS records (MX, TXT, DKIM) to add to your domain registrar.
+4. Add the records, then click **Verify** in Resend. Verification typically completes within a few minutes.
+5. Once verified, you can send from any address on that domain (e.g. `digest@yourdomain.com`).
+
+> **Testing without a custom domain:** Resend provides a shared `onboarding@resend.dev` sender on free accounts. Set `EMAIL_FROM=onboarding@resend.dev` to test delivery before setting up your own domain. Note: the shared sender can only deliver to the email address registered on your Resend account.
 
 ### Changing the sender address after deployment
 
 If you want to use a different `EMAIL_FROM` address in the future:
 
-1. Verify the new address in SES (steps above).
-2. Update `EMAIL_FROM` in your `.env` file (used by `deploy.bat` when reading parameters).
-3. Run `deploy.bat` (or `sam build && sam deploy`) — this updates both the Lambda environment variable **and** the IAM policy ARN in one step.
+1. Verify the new domain in Resend (steps above).
+2. Update `EMAIL_FROM` in your `.env` file.
+3. Run `deploy.bat` — this pushes the new value to the Lambda environment variable.
 
-> Do not update `EMAIL_FROM` only via the Lambda console — the IAM policy will still point to the old address and SES sends will fail.
+> You can also update `EMAIL_FROM` directly in the Lambda console (Configuration → Environment variables) without redeploying — Resend has no IAM policy constraints tied to the sender address.
 
 ---
 
@@ -199,12 +201,11 @@ If you want to use a different `EMAIL_FROM` address in the future:
 
 | Problem | What to check |
 |---|---|
-| **Email not received** | Check your spam/junk folder. Verify `EMAIL_TO` is correct in Lambda environment variables. Confirm `EMAIL_TO` is a verified SES identity. |
-| **Email arrives but "From" shows `@gmail.com`** | Change `EMAIL_FROM` to a custom domain address (e.g. `digest@yourdomain.com`), not a Gmail address. Gmail addresses cannot be used as SES senders reliably. |
+| **Email not received** | Check your spam/junk folder. Verify `EMAIL_TO` and `RESEND_API_KEY` are set in Lambda environment variables. |
+| **`Resend send failed` in CloudWatch** | Check that `RESEND_API_KEY` is valid and `EMAIL_FROM` is on a verified Resend domain. Open the Resend dashboard → Logs to see the delivery attempt. |
+| **Email arrives but "From" shows wrong address** | Update `EMAIL_FROM` in `.env` and redeploy with `deploy.bat`, or update it directly in Lambda → Configuration → Environment variables. |
 | **Lambda timed out** | Check CloudWatch logs for which stage it was in. Most likely cause: invalid API key preventing Tavily or Claude from responding. Verify `ANTHROPIC_API_KEY` and `TAVILY_API_KEY` are correct. |
 | **No report in S3 after Lambda ran** | Open CloudWatch logs for that run and look for `ERROR` lines. Common causes: API keys missing or expired, Tavily quota exceeded. |
 | **Agent skipped (no new report)** | Check CloudWatch logs for `already exists in S3. Skipping.` — this is normal. Delete today's S3 file and re-run to force a fresh report. |
-| **SES `MessageRejected` error in logs** | The `EMAIL_TO` address is not verified in SES. Verify it (see Section 8). |
-| **SES `InvalidClientTokenId` error** | AWS credentials for the Lambda role are wrong or expired. Check the IAM role `ai-news-agent-lambda-role` has `ses:SendRawEmail` permission. |
 | **EventBridge not triggering** | Console → EventBridge → Rules → `ai-news-agent-weekly` → confirm it is **Enabled**. |
 | **Report renders with broken layout in email** | Your email client may not support full HTML/CSS. Download the file from S3 and open it in a browser for the full experience. |

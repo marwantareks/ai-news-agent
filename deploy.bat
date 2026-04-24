@@ -10,9 +10,16 @@ IF "%STACK%"=="" SET STACK=ai-news-agent
 SET REGION=%2
 IF "%REGION%"=="" SET REGION=us-east-1
 
+REM Load .env file if present
+IF EXIST .env (
+    FOR /f "usebackq tokens=1,2 delims==" %%i IN (.env) DO (
+        IF NOT "%%i"=="" IF NOT "%%j"=="" SET %%i=%%j
+    )
+)
+
 echo.
 echo ===================================================
-echo  AI News Agent — SAM Deploy
+echo  AI News Agent - SAM Deploy
 echo  Stack : %STACK%
 echo  Region: %REGION%
 echo ===================================================
@@ -35,8 +42,9 @@ IF ERRORLEVEL 1 (
 )
 
 echo [1/2] Building Lambda package...
-sam build --template template.yaml
-IF ERRORLEVEL 1 (
+cmd /c sam build --template template.yaml
+SET BUILD_EXIT=%ERRORLEVEL%
+IF %BUILD_EXIT% NEQ 0 (
     echo ERROR: sam build failed.
     exit /b 1
 )
@@ -45,7 +53,7 @@ echo.
 echo [2/2] Deploying to AWS...
 echo       (You will be prompted for API keys and email addresses)
 echo.
-sam deploy ^
+cmd /c sam deploy ^
     --stack-name %STACK% ^
     --region %REGION% ^
     --capabilities CAPABILITY_NAMED_IAM ^
@@ -54,7 +62,8 @@ sam deploy ^
         AnthropicApiKey=%ANTHROPIC_API_KEY% ^
         TavilyApiKey=%TAVILY_API_KEY% ^
         EmailTo=%EMAIL_TO% ^
-        EmailFrom=%EMAIL_FROM%
+        EmailFrom=%EMAIL_FROM% ^
+        ResendApiKey=%RESEND_API_KEY%
 
 IF ERRORLEVEL 1 (
     echo.
@@ -71,5 +80,4 @@ echo  - Logs: CloudWatch /aws/lambda/ai-news-agent
 echo  - Reports: S3 bucket ai-news-agent-reports-^<AccountId^>
 echo ===================================================
 echo.
-echo NOTE: If using SES sandbox mode, verify both EMAIL_FROM
-echo       and EMAIL_TO addresses in the AWS SES console.
+echo NOTE: Ensure EMAIL_FROM is on a Resend-verified domain.

@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The AI Learning Digest Agent is a Python application that runs daily to produce a curated HTML report of the best AI learning resources published in the last 7 days. It operates in two modes: **local mode** (runs on Windows via Task Scheduler, saves HTML to disk, sends email via SMTP) and **AWS mode** (runs as an AWS Lambda function triggered by EventBridge, stores the report in S3, and sends email via SES). The entire application lives in a single file, `agent.py`, and follows a four-stage sequential pipeline: Search → Curate → Generate → Email.
+The AI Learning Digest Agent is a Python application that runs on a schedule to produce a curated HTML report of the best AI learning resources published in the last 7 days. It operates in two modes: **local mode** (runs on Windows via Task Scheduler, saves HTML to disk) and **AWS mode** (runs as an AWS Lambda function triggered by EventBridge, stores the report in S3). Both modes send email via the **Resend HTTP API** using a single shared `send_email()` function. The entire application lives in a single file, `agent.py`, and follows a four-stage sequential pipeline: Search → Curate → Generate → Email.
 
 ---
 
@@ -13,14 +13,13 @@ The AI Learning Digest Agent is a Python application that runs daily to produce 
 | Runtime | Python | 3.12 (Lambda runtime: `python3.12`) |
 | AI Curation | Claude Haiku | `claude-haiku-4-5-20251001` via Anthropic SDK |
 | Web Search | Tavily API | `tavily-python` client |
-| AWS Functions | boto3 | S3 storage, SES email |
+| AWS Functions | boto3 | S3 storage only |
+| Email | Resend HTTP API | `resend` Python SDK — used in both local and AWS modes |
 | Infrastructure as Code | AWS SAM | `template.yaml` |
 | Scheduler (local) | Windows Task Scheduler | Tuesdays and Fridays at 03:00 UTC via `setup_scheduler.ps1` |
 | Scheduler (AWS) | Amazon EventBridge | `cron(0 3 ? * TUE,FRI *)` |
 | Report Storage (local) | Local filesystem | `reports/YYYY-MM-DD-ai-learning.html` |
 | Report Storage (AWS) | Amazon S3 | Bucket: `ai-news-agent-reports-<AccountId>` |
-| Email (local) | `smtplib.SMTP_SSL` | Port 465, Gmail App Password |
-| Email (AWS) | Amazon SES | `ses.send_raw_email()` |
 | Logging (local) | Python `logging` | stdout + `agent.log` |
 | Logging (AWS) | Amazon CloudWatch Logs | `/aws/lambda/ai-news-agent` (stdout capture) |
 | Config | `python-dotenv` | `.env` file in project root |
@@ -111,11 +110,11 @@ ai-news-agent/
 │                                                                 │
 │  Local mode:                                                    │
 │    - Write to reports/YYYY-MM-DD-ai-learning.html               │
-│    - Send via smtplib.SMTP_SSL (port 465) if EMAIL_* set        │
+│    - Send via Resend HTTP API if EMAIL_*, RESEND_API_KEY set    │
 │                                                                 │
 │  AWS mode:                                                      │
 │    - Upload to S3: s3://<bucket>/YYYY-MM-DD-ai-learning.html    │
-│    - Send via ses.send_raw_email() if EMAIL_TO + EMAIL_FROM set │
+│    - Send via Resend HTTP API if EMAIL_*, RESEND_API_KEY set    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -130,8 +129,8 @@ ai-news-agent/
 | **Entry point** | `if __name__ == "__main__": main()` | `lambda_handler(event, context)` calls `main()` |
 | **Idempotency check** | `Path.exists()` on local report file | `s3.head_object()` — 404 = not yet run, anything else = skip |
 | **Report storage** | `reports/YYYY-MM-DD-ai-learning.html` | `s3://<bucket>/YYYY-MM-DD-ai-learning.html` |
-| **Email function** | `send_email()` via `smtplib.SMTP_SSL` | `aws_send_email()` via `boto3` SES |
-| **Email auth** | `SMTP_USER` + `SMTP_PASSWORD` (Gmail App Password) | IAM role permission: `ses:SendRawEmail` |
+| **Email function** | `send_email()` via Resend HTTP API | `send_email()` via Resend HTTP API (same function) |
+| **Email auth** | `RESEND_API_KEY` env var | `RESEND_API_KEY` Lambda env var (set via SAM parameter) |
 | **Logging** | stdout + `agent.log` (FileHandler appended) | stdout only (CloudWatch captures automatically) |
 | **FileHandler** | Added when `S3_BUCKET` is empty | Skipped (Lambda's read-only FS — FileHandler would fail) |
 | **Dependencies** | All in local `venv/` | Packaged by `sam build` into Lambda deployment ZIP |
@@ -157,11 +156,10 @@ All resources are defined in `template.yaml` and deployed via SAM.
 | `AWSLambdaBasicExecutionRole` (managed) | CloudWatch Logs | Write function logs to CloudWatch |
 | `s3:PutObject`, `s3:GetObject` | `arn:aws:s3:::ai-news-agent-reports-<AccountId>/*` | Upload HTML report, read existing reports |
 | `s3:ListBucket` | `arn:aws:s3:::ai-news-agent-reports-<AccountId>` | Required for `head_object` to return 404 (not 403) on missing keys — enables idempotency check |
-| `ses:SendRawEmail` | `arn:aws:ses:us-east-1:<AccountId>:identity/<EmailFrom>` and `arn:aws:ses:us-east-1:<AccountId>:identity/<EmailTo>` | Send the HTML digest via SES — scoped to both the sender and recipient identities. SES checks IAM authorization against both when the recipient is a verified identity in the same account. |
 
 > **Note:** `s3:ListBucket` must be on the bucket ARN (not `/*`) to allow `head_object` to distinguish "file not found" (404) from "access denied" (403). Without it, the idempotency check would raise an exception on the first run of each day.
 
-> **SES IAM scope:** The `ses:SendRawEmail` permission is scoped to both the `EmailFrom` and `EmailTo` identities configured at deploy time. SES checks IAM authorization against both sender and recipient when the recipient address is a verified identity in the same AWS account. If you change either `EMAIL_FROM` or `EMAIL_TO`, you **must** redeploy (`deploy.bat` or `sam build && sam deploy`) so the IAM policy ARNs are updated. Updating only the Lambda environment variables without redeploying will cause SES to reject the send with an `AccessDenied` error.
+> **No SES permissions required.** Email is sent via the Resend HTTP API using `RESEND_API_KEY`. Changing `EMAIL_FROM` or `EMAIL_TO` requires only a `.env` update and a redeploy (or a direct Lambda console edit) — no IAM policy changes needed.
 
 ---
 
@@ -254,16 +252,12 @@ Valid values:
 |---|---|---|---|---|
 | `ANTHROPIC_API_KEY` | — | Yes | Both | Anthropic API key for Claude Haiku |
 | `TAVILY_API_KEY` | — | Yes | Both | Tavily search API key |
-| `EMAIL_TO` | `""` | No | Both | Recipient email address |
-| `EMAIL_FROM` | `""` | No | Both | Sender email address (must be SES-verified in AWS mode) |
-| `SMTP_HOST` | `smtp.gmail.com` | No | Local only | SMTP server hostname |
-| `SMTP_PORT` | `465` | No | Local only | SMTP port (SSL) |
-| `SMTP_USER` | `""` | No | Local only | Gmail address for SMTP auth (must be Gmail even if EMAIL_FROM is a custom domain) |
-| `SMTP_PASSWORD` | `""` | No | Local only | Gmail App Password (16-character) |
+| `EMAIL_TO` | `""` | No | Both | Comma-separated recipient email addresses |
+| `EMAIL_FROM` | `""` | No | Both | Sender address — must be on a Resend-verified domain |
+| `RESEND_API_KEY` | `""` | No | Both | Resend API key — required for email delivery in both modes |
 | `S3_BUCKET` | `""` | AWS mode | AWS only | S3 bucket name — presence of this var gates AWS mode. Set automatically by SAM template. |
-| `SES_REGION` | `us-east-1` | No | AWS only | AWS region for SES client. Do NOT use `AWS_REGION` — Lambda reserves that name. |
 
-> `S3_BUCKET` and `SES_REGION` are injected by `template.yaml` into the Lambda environment automatically. Do not add them to your local `.env`.
+> `S3_BUCKET` is injected by `template.yaml` into the Lambda environment automatically. Do not add it to your local `.env`. `RESEND_API_KEY` is passed as the `ResendApiKey` SAM parameter and becomes a Lambda env var after deploy.
 
 ---
 
@@ -323,8 +317,7 @@ To force a re-run: delete today's report from `reports/` (local) or from S3 (AWS
 | Tavily search (per query) | `try/except` — logs warning, continues with remaining queries |
 | Claude Haiku call | Propagates exception — fatal; run aborts |
 | S3 upload | Propagates exception — fatal; run aborts |
-| SES send | Logs error, does not re-raise — report is still stored in S3 |
-| Local SMTP send | Logs error, does not re-raise — report is still saved to disk |
+| Resend send (both modes) | Logs error, does not re-raise — report is still stored in S3 / saved to disk |
 | Missing API keys | `sys.exit(1)` with error log |
 | Missing dependencies | `sys.exit(1)` with error log |
 
@@ -336,7 +329,7 @@ To force a re-run: delete today's report from `reports/` (local) or from S3 (AWS
 2026-03-10 03:02:31,789 INFO  Curating Developer Track with Claude Haiku...
 2026-03-10 03:02:45,012 INFO  Curating Architect Track with Claude Haiku...
 2026-03-10 03:02:58,345 INFO  Report uploaded to s3://ai-news-agent-reports-613261654297/2026-03-10-ai-learning.html
-2026-03-10 03:02:59,678 INFO  Report emailed via SES to user@example.com
+2026-03-10 03:02:59,678 INFO  Report emailed via Resend to user@example.com
 ```
 
 ### CloudWatch vs file logging

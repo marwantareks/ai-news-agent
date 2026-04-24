@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: AI News Agent — daily Lambda that searches, curates, and emails an AI learning digest.
+Description: AI News Agent — biweekly Lambda that searches, curates, and emails an AI learning digest.
 
 Parameters:
   AnthropicApiKey:
@@ -16,12 +16,17 @@ Parameters:
   EmailTo:
     Type: String
     Default: ""
-    Description: Recipient email address (must be SES-verified in sandbox mode)
+    Description: Recipient email address
 
   EmailFrom:
     Type: String
     Default: ""
-    Description: Sender email address (must be SES-verified identity)
+    Description: Sender email address (must be on a Resend-verified domain)
+
+  ResendApiKey:
+    Type: String
+    NoEcho: true
+    Description: Resend API key for email delivery
 
 Globals:
   Function:
@@ -35,7 +40,7 @@ Globals:
         EMAIL_TO: !Ref EmailTo
         EMAIL_FROM: !Ref EmailFrom
         S3_BUCKET: !Ref ReportsBucket
-        SES_REGION: us-east-1
+        RESEND_API_KEY: !Ref ResendApiKey
 
 Resources:
 
@@ -65,7 +70,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: AgentS3SesAccess
+        - PolicyName: AgentS3Access
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -78,12 +83,6 @@ Resources:
                 Action:
                   - s3:ListBucket
                 Resource: !Sub "arn:aws:s3:::ai-news-agent-reports-${AWS::AccountId}"
-              - Effect: Allow
-                Action:
-                  - ses:SendRawEmail
-                Resource:
-                  - !Sub "arn:aws:ses:us-east-1:${AWS::AccountId}:identity/${EmailFrom}"
-                  - !Sub "arn:aws:ses:us-east-1:${AWS::AccountId}:identity/${EmailTo}"
 
   # ── Lambda function ──────────────────────────────────────────────────────────
   AgentFunction:
