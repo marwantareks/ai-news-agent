@@ -77,25 +77,25 @@ The curate stage uses **`claude-haiku-4-5-20251001`** (hardcoded in `summarize_s
 
 ## Logging
 
-Logs go to both stdout and `agent.log` (appended, UTF-8). Check `agent.log` after a run to verify email delivery or diagnose search/Claude errors.
+In local mode: logs go to both stdout and `agent.log` (appended, UTF-8). In AWS mode: stdout only — CloudWatch captures it automatically (`force=True` in `logging.basicConfig` overrides Lambda's pre-configured root logger). Check `agent.log` (local) or CloudWatch log group `/aws/lambda/ai-news-agent` (AWS) after a run.
 
 ## AWS Deployment
 
 ```bat
-deploy.bat
+deploy.bat [stack-name] [region]
 ```
 
-Loads `.env` vars, then runs `sam build && sam deploy --capabilities CAPABILITY_NAMED_IAM --resolve-s3`. Passes `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `EMAIL_FROM`, and `EMAIL_TO` as SAM parameter overrides. Requires AWS SAM CLI and configured AWS credentials (`aws configure`).
+Defaults to stack `ai-news-agent` in `us-east-1`. Loads `.env` vars, then runs `sam build && sam deploy --capabilities CAPABILITY_NAMED_IAM --resolve-s3`. Passes `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `EMAIL_FROM`, and `EMAIL_TO` as SAM parameter overrides. Requires AWS SAM CLI and configured AWS credentials (`aws configure`).
 
-After first deploy, subsequent runs skip `--guided` and reuse the saved config in `samconfig.toml`.
+After first deploy, subsequent runs reuse the saved config in `samconfig.toml`.
 
 ## Lambda Configuration
 
-Defined in `template.yaml`: 300s timeout, 256MB memory, Python 3.12. S3 reports expire after 90 days (lifecycle rule on `ReportsBucket`). The EventBridge schedule runs on Tuesdays and Fridays at `cron(0 3 ? * TUE,FRI *)` (03:00 UTC).
+Defined in `template.yaml`: 300s timeout, 256MB memory, Python 3.12. S3 reports expire after 90 days (lifecycle rule on `ReportsBucket`). Entry point is `agent.lambda_handler`, which calls `main()`.
 
 ## Scheduler
 
-`setup.bat` registers a Windows Task Scheduler job (`AI-News-Agent-Weekly`) via `setup_scheduler.ps1` that runs `run_agent.bat` on Tuesdays and Fridays at 03:00 UTC. The task is configured to run on next startup if the machine was off at trigger time.
+`setup.bat` registers a Windows Task Scheduler job (`AI-News-Agent-Weekly`) by invoking `setup_scheduler.ps1` (PowerShell). The job runs `run_agent.bat` on Tuesdays and Fridays at 03:00 UTC and is configured to run on next startup if the machine was off at trigger time.
 
 ## Security
 
