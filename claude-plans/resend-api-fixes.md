@@ -5,7 +5,7 @@
 
 ---
 
-## Phase 1: Fix Existing Resend API Issues
+## Phase 1: Fix Existing Resend API Issues ✅ COMPLETE
 
 ### change file name
 change subscribe page index.html name to subscribe.html and check for dependencies on the file and fix them 
@@ -157,7 +157,7 @@ resend.Broadcasts.create({
 don't move to phase 2 till confirm that phase 1 is complete
 ---
 
-## Phase 2: Unsubscribe Feature
+## Phase 2: Unsubscribe Feature ✅ COMPLETE
 
 ### Overview
 
