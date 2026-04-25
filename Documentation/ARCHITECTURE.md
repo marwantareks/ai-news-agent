@@ -153,7 +153,7 @@ All resources are defined in `template.yaml` and deployed via SAM.
 | `ReportsBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-reports-<AccountId>`, lifecycle: delete objects after 90 days |
 | `AgentExecutionRole` | `AWS::IAM::Role` | Name: `ai-news-agent-lambda-role` |
 | `SignupFunction` | `AWS::Serverless::Function` | Name: `ai-news-agent-signup`, handler: `signup/handler.handler`, runtime: `python3.12`, memory: 128 MB, timeout: 10s. stdlib only — no pip deps. Handles both subscribe and unsubscribe routes. |
-| `ServerlessHttpApi` | HTTP API (auto-created by SAM) | Exposes `POST /subscribe`, `OPTIONS /subscribe`, `POST /unsubscribe`, `OPTIONS /unsubscribe` |
+| `ServerlessHttpApi` | HTTP API (auto-created by SAM) | Exposes `POST /subscribe`, `OPTIONS /subscribe`, `POST /unsubscribe`, `OPTIONS /unsubscribe`. Throttled: 10 req/s rate limit, burst 20 (configured via `Globals.HttpApi.DefaultRouteSettings`). |
 | `SignupBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-signup-<AccountId>`. Public S3 static website hosting `subscribe.html` and `unsubscribe.html`. |
 
 ### IAM Permissions

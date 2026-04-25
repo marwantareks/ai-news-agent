@@ -37,7 +37,7 @@ Ordered by: high exploited AWS cost first, then low effort, then low solution co
 
 | Plan Fix | Findings Covered | Severity | Effort | AWS Cost if Exploited | Solution AWS Cost | Status |
 |----------|-----------------|----------|--------|-----------------------|-------------------|--------|
-| Fix 1 | #1, #5 — Rate limiting + CORS bypass | Critical + High | Low | High | None | Pending |
+| Fix 1 | #1, #5 — Rate limiting + CORS bypass | Critical + High | Low | High | None | Complete |
 | Fix 2 | #8 — CORS default `"*"` | Medium | Low | None | None | Pending |
 | Fix 3 | #6 — Weak email validation | High | Low | Low | None | Pending |
 | Fix 4 | #10 — No timeout on Resend call | Medium | Low | Medium | None (reduces cost) | Pending |

@@ -29,6 +29,10 @@ Parameters:
     Description: Resend Audience ID for newsletter subscribers
 
 Globals:
+  HttpApi:
+    DefaultRouteSettings:
+      ThrottlingBurstLimit: 20
+      ThrottlingRateLimit: 10
   Function:
     Runtime: python3.12
     Timeout: 300
