@@ -41,6 +41,7 @@ Globals:
         S3_BUCKET: !Ref ReportsBucket
         RESEND_API_KEY: !Ref ResendApiKey
         RESEND_AUDIENCE_ID: !Ref ResendAudienceId
+        SIGNUP_PAGE_URL: !Sub "http://ai-news-agent-signup-${AWS::AccountId}.s3-website-${AWS::Region}.amazonaws.com"
 
 Resources:
 
