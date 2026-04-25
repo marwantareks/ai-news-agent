@@ -87,7 +87,7 @@ In local mode: logs go to both stdout and `agent.log` (appended, UTF-8). In AWS 
 deploy.bat [stack-name] [region]
 ```
 
-Defaults to stack `ai-news-agent` in `us-east-1`. Auto-loads `.env` at startup, then runs `sam build && sam deploy --capabilities CAPABILITY_NAMED_IAM --resolve-s3`. Passes `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `EMAIL_FROM`, `RESEND_API_KEY`, and `RESEND_AUDIENCE_ID` as SAM parameter overrides. After deploy, automatically injects the `SignupApiUrl` into `signup/subscribe.html` and uploads it to the `SignupBucket` S3 website. Requires AWS SAM CLI and configured AWS credentials (`aws configure`).
+Defaults to stack `ai-news-agent` in `us-east-1`. Auto-loads `.env` at startup, then runs `sam build && sam deploy --capabilities CAPABILITY_NAMED_IAM --resolve-s3`. Passes `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `EMAIL_FROM`, `RESEND_API_KEY`, and `RESEND_AUDIENCE_ID` as SAM parameter overrides. After deploy, automatically injects `SignupApiUrl` into `signup/subscribe.html` and `UnsubscribeApiUrl` into `signup/unsubscribe.html`, then uploads both to the `SignupBucket` S3 website. Requires AWS SAM CLI and configured AWS credentials (`aws configure`).
 
 **Important:** Run `deploy.bat` from an existing cmd window (`cd C:\MyProjects\ai-news-agent && deploy.bat`), not by double-clicking. SAM CLI calls `exit` (not `exit /b`) internally — `deploy.bat` wraps both `sam build` and `sam deploy` with `cmd /c` to prevent this from killing the parent shell.
 
@@ -97,21 +97,25 @@ After first deploy, subsequent runs reuse the saved config in `samconfig.toml`.
 
 Defined in `template.yaml`: 300s timeout, 256MB memory, Python 3.12. S3 reports expire after 90 days (lifecycle rule on `ReportsBucket`). Entry point is `agent.lambda_handler`, which calls `main()`.
 
-A second Lambda (`ai-news-agent-signup`, 10s timeout, 128MB) handles self-service newsletter signups — see **Newsletter Signup** section below.
+A second Lambda (`ai-news-agent-signup`, 10s timeout, 128MB) handles self-service newsletter signups and unsubscribes — see **Newsletter Signup & Unsubscribe** section below.
 
-## Newsletter Signup
+## Newsletter Signup & Unsubscribe
 
-Self-service signup flow backed by Resend Audiences:
+Self-service subscribe/unsubscribe flow backed by Resend Audiences:
 
-- **`signup/handler.py`** — Lambda handler (stdlib only, no extra deps). Accepts `POST /subscribe` with `{"email": "..."}`, writes the contact to the Resend Audience via the Resend REST API. Returns 200 for new subscribers and already-subscribed contacts alike; 400 for invalid input; 502 on upstream errors. CORS origin is restricted to the S3 website via the `SIGNUP_ALLOWED_ORIGIN` env var, which `template.yaml` sets automatically — do not add it to `.env`.
+- **`signup/handler.py`** — Lambda handler (stdlib only, no extra deps). Dispatches on `event["rawPath"]`: paths ending in `/unsubscribe` go to `_handle_unsubscribe()`; all others go to `_handle_subscribe()`. Shared helper `_call_resend(email, unsubscribed, headers)` makes the Resend Contacts API call. Returns 200 on success; 400 for invalid input; 502 on upstream errors. CORS origin is restricted to the S3 website via `SIGNUP_ALLOWED_ORIGIN` env var, which `template.yaml` sets automatically — do not add it to `.env`.
 
-- **`signup/subscribe.html`** — Static HTML signup page (no framework, no CDN). Contains a `SIGNUP_API_URL` placeholder string that `deploy.bat` replaces with the live API Gateway URL at deploy time before uploading to S3.
+- **`signup/subscribe.html`** — Static HTML signup page (no framework, no CDN). Contains a `SIGNUP_API_URL` placeholder that `deploy.bat` replaces with the live API Gateway URL at deploy time before uploading to S3.
 
-- **SignupApiUrl** — HTTPS endpoint (API Gateway HTTP API, auto-created by SAM): `https://<id>.execute-api.<region>.amazonaws.com/subscribe`
+- **`signup/unsubscribe.html`** — Static HTML unsubscribe page. Same style as subscribe page. Pre-fills email from `?email=` query parameter. Contains a `UNSUBSCRIBE_API_URL` placeholder that `deploy.bat` replaces at deploy time.
 
-- **SignupPageUrl** — Public S3 static website: `http://ai-news-agent-signup-<AccountId>.s3-website-<region>.amazonaws.com`
+- **Unsubscribe link in broadcasts** — `generate_html()` embeds `{{{RESEND_UNSUBSCRIBE_URL}}}` in the email footer (stored in `resend_unsub_url` variable to avoid f-string parse errors). Resend expands it to a per-recipient signed URL at send time.
 
-Both URLs are emitted as CloudFormation Outputs after `deploy.bat` runs and are printed in the deploy summary.
+- **SignupApiUrl** — `https://<id>.execute-api.<region>.amazonaws.com/subscribe`
+- **UnsubscribeApiUrl** — `https://<id>.execute-api.<region>.amazonaws.com/unsubscribe`
+- **SignupPageUrl** — `http://ai-news-agent-signup-<AccountId>.s3-website-<region>.amazonaws.com`
+
+All three are emitted as CloudFormation Outputs and printed in the deploy summary.
 
 ## Scheduler
 

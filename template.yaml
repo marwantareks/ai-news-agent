@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: AI News Agent — biweekly Lambda that searches, curates, and emails an AI learning digest.
+Description: AI Learning Digest Agent — biweekly Lambda that searches, curates, and emails an AI learning digest.
 
 Parameters:
   AnthropicApiKey:
@@ -124,6 +124,16 @@ Resources:
           Properties:
             Path: /subscribe
             Method: OPTIONS
+        UnsubscribePost:
+          Type: HttpApi
+          Properties:
+            Path: /unsubscribe
+            Method: POST
+        UnsubscribeOptions:
+          Type: HttpApi
+          Properties:
+            Path: /unsubscribe
+            Method: OPTIONS
 
   # ── S3 bucket for signup page ────────────────────────────────────────────────
   SignupBucket:
@@ -169,3 +179,7 @@ Outputs:
   SignupPageUrl:
     Description: Public signup page URL
     Value: !Sub "http://ai-news-agent-signup-${AWS::AccountId}.s3-website-${AWS::Region}.amazonaws.com"
+
+  UnsubscribeApiUrl:
+    Description: Unsubscribe endpoint URL
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/unsubscribe"

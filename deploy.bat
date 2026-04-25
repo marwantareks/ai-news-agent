@@ -19,7 +19,7 @@ IF EXIST .env (
 
 echo.
 echo ===================================================
-echo  AI News Agent - SAM Deploy
+echo  AI Learning Digest Agent - SAM Deploy
 echo  Stack : %STACK%
 echo  Region: %REGION%
 echo ===================================================
@@ -86,6 +86,14 @@ powershell -Command "(Get-Content signup\subscribe.html) -replace 'SIGNUP_API_UR
 aws s3 cp signup\subscribe.html.tmp s3://ai-news-agent-signup-%AWS_ACCOUNT_ID%/subscribe.html --content-type text/html
 del signup\subscribe.html.tmp
 
+rem Retrieve UnsubscribeApiUrl from stack outputs
+for /f "tokens=*" %%i in ('aws cloudformation describe-stacks --stack-name %STACK% --query "Stacks[0].Outputs[?OutputKey=='UnsubscribeApiUrl'].OutputValue" --output text') do set UNSUBSCRIBE_API_URL=%%i
+
+rem Inject URL into unsubscribe.html and upload to S3
+powershell -Command "(Get-Content signup\unsubscribe.html) -replace 'UNSUBSCRIBE_API_URL', '%UNSUBSCRIBE_API_URL%' | Set-Content signup\unsubscribe.html.tmp"
+aws s3 cp signup\unsubscribe.html.tmp s3://ai-news-agent-signup-%AWS_ACCOUNT_ID%/unsubscribe.html --content-type text/html
+del signup\unsubscribe.html.tmp
+
 echo.
 echo ===================================================
 echo  Deployment complete!
@@ -93,7 +101,8 @@ echo  - Lambda runs Tue/Fri at 03:00 UTC
 echo  - Logs: CloudWatch /aws/lambda/ai-news-agent
 echo  - Reports: S3 bucket ai-news-agent-reports-%AWS_ACCOUNT_ID%
 echo  - Signup page: http://ai-news-agent-signup-%AWS_ACCOUNT_ID%.s3-website-%REGION%.amazonaws.com
-echo  - Signup API:  %SIGNUP_API_URL%
+echo  - Signup API:      %SIGNUP_API_URL%
+echo  - Unsubscribe API: %UNSUBSCRIBE_API_URL%
 echo ===================================================
 echo.
 echo NOTE: Ensure EMAIL_FROM is on a Resend-verified domain.

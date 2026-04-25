@@ -150,7 +150,7 @@ Windows Task Scheduler                EventBridge cron(0 3 ? * TUE,FRI *)
 
 ---
 
-## Newsletter Signup
+## Newsletter Signup & Unsubscribe
 
 A public self-service signup page lets anyone subscribe to the digest without manual audience management.
 
@@ -159,6 +159,12 @@ A public self-service signup page lets anyone subscribe to the digest without ma
 - Deployed automatically as part of `deploy.bat` — the live API URL is injected into `signup/subscribe.html` before upload.
 
 Once someone subscribes they receive every future broadcast automatically, since `send_email()` broadcasts to the entire audience.
+
+### Unsubscribe
+
+Every broadcast email includes an **Unsubscribe** link in the footer. Resend expands the `{{{RESEND_UNSUBSCRIBE_URL}}}` template variable into a per-recipient signed URL — clicking it opts the contact out directly in Resend with no code on our side.
+
+A fallback **unsubscribe page** is also hosted on S3 (`/unsubscribe.html`). Users can enter their email manually to opt out — useful when email links are stripped by a client. The page pre-fills the email from a `?email=` query parameter. It calls `POST /unsubscribe` on the same Lambda as the signup function, which flags the contact as `unsubscribed: true` in Resend. Unsubscribed contacts are preserved in the audience but excluded from all future broadcasts.
 
 ---
 
@@ -270,8 +276,9 @@ ai-news-agent/
 ├── .env                   # API keys and email config (not committed to git)
 ├── agent.log              # Append-only run log — local mode only
 ├── signup/
-│   ├── handler.py         # Lambda handler for POST /subscribe (stdlib only, no pip deps)
-│   └── subscribe.html     # Static signup page (SIGNUP_API_URL placeholder replaced at deploy)
+│   ├── handler.py         # Lambda handler for POST /subscribe and POST /unsubscribe (stdlib only, no pip deps)
+│   ├── subscribe.html     # Static signup page (SIGNUP_API_URL placeholder replaced at deploy)
+│   └── unsubscribe.html   # Static unsubscribe page (UNSUBSCRIBE_API_URL placeholder replaced at deploy)
 ├── Documentation/
 │   ├── ARCHITECTURE.md    # Full technical architecture, pipeline, schemas, AWS infra
 │   └── USER_GUIDE.md      # End-user guide: env vars, AWS Console steps, monitoring
@@ -347,14 +354,16 @@ cd C:\MyProjects\ai-news-agent
 deploy.bat
 ```
 
-`deploy.bat` performs three steps automatically:
+`deploy.bat` performs four steps automatically:
 1. **`sam build`** — packages `agent.py` and dependencies into a Lambda deployment ZIP
 2. **`sam deploy`** — creates/updates all AWS resources and injects your `.env` values as Lambda env vars
-3. **Signup page upload** — retrieves the live API Gateway URL from CloudFormation outputs, injects it into `signup/subscribe.html`, and uploads it to the S3 website bucket
+3. **Signup page upload** — retrieves `SignupApiUrl` from CloudFormation outputs, injects it into `signup/subscribe.html`, and uploads to the S3 website bucket
+4. **Unsubscribe page upload** — retrieves `UnsubscribeApiUrl`, injects it into `signup/unsubscribe.html`, and uploads to the same S3 bucket
 
-After deploy, the two public URLs are printed in the summary:
+After deploy, URLs are printed in the summary:
 - **SignupPageUrl** — the public newsletter signup page
-- **SignupApiUrl** — the API endpoint (for reference; not needed manually)
+- **SignupApiUrl** — the subscribe API endpoint (for reference)
+- **UnsubscribeApiUrl** — the unsubscribe API endpoint (for reference)
 
 Or run SAM directly — first time (interactive prompts):
 

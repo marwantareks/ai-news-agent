@@ -42,8 +42,9 @@ ai-news-agent/
 ├── .env                   # API keys and email config (never committed to git)
 ├── agent.log              # Append-only run log (local mode only)
 ├── signup/
-│   ├── handler.py         # Lambda handler for POST /subscribe (stdlib only, no pip deps)
-│   └── subscribe.html     # Static signup page (SIGNUP_API_URL placeholder injected at deploy)
+│   ├── handler.py         # Lambda handler for POST /subscribe and POST /unsubscribe (stdlib only, no pip deps)
+│   ├── subscribe.html     # Static signup page (SIGNUP_API_URL placeholder injected at deploy)
+│   └── unsubscribe.html   # Static unsubscribe page (UNSUBSCRIBE_API_URL placeholder injected at deploy)
 ├── Documentation/
 │   ├── ARCHITECTURE.md    # This file
 │   └── USER_GUIDE.md      # End-user guide: env vars, AWS Console steps, testing
@@ -151,9 +152,9 @@ All resources are defined in `template.yaml` and deployed via SAM.
 | `WeeklySchedule` | EventBridge Schedule (SAM `Events`) | `cron(0 3 ? * TUE,FRI *)` — fires Tuesdays and Fridays at 03:00 UTC |
 | `ReportsBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-reports-<AccountId>`, lifecycle: delete objects after 90 days |
 | `AgentExecutionRole` | `AWS::IAM::Role` | Name: `ai-news-agent-lambda-role` |
-| `SignupFunction` | `AWS::Serverless::Function` | Name: `ai-news-agent-signup`, handler: `signup/handler.handler`, runtime: `python3.12`, memory: 128 MB, timeout: 10s. stdlib only — no pip deps. |
-| `ServerlessHttpApi` | HTTP API (auto-created by SAM) | Exposes `POST /subscribe` and `OPTIONS /subscribe` |
-| `SignupBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-signup-<AccountId>`. Public S3 static website hosting `subscribe.html`. |
+| `SignupFunction` | `AWS::Serverless::Function` | Name: `ai-news-agent-signup`, handler: `signup/handler.handler`, runtime: `python3.12`, memory: 128 MB, timeout: 10s. stdlib only — no pip deps. Handles both subscribe and unsubscribe routes. |
+| `ServerlessHttpApi` | HTTP API (auto-created by SAM) | Exposes `POST /subscribe`, `OPTIONS /subscribe`, `POST /unsubscribe`, `OPTIONS /unsubscribe` |
+| `SignupBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-signup-<AccountId>`. Public S3 static website hosting `subscribe.html` and `unsubscribe.html`. |
 
 ### IAM Permissions
 
@@ -362,11 +363,11 @@ Costs assume daily operation in AWS mode with default settings.
 
 ---
 
-## 14. Newsletter Signup
+## 14. Newsletter Signup & Unsubscribe
 
-A second Lambda + HTTP API + S3 static site provides self-service newsletter signup.
+A second Lambda + HTTP API + S3 static site provides self-service newsletter signup and unsubscribe.
 
-### Flow
+### Subscribe flow
 
 ```
 Visitor → signup/subscribe.html (S3 website)
@@ -375,10 +376,31 @@ Visitor → signup/subscribe.html (S3 website)
          API Gateway HTTP API (auto-created by SAM)
               │
               ▼
-         SignupFunction (signup/handler.handler)
-              │  POST https://api.resend.com/contacts
+         SignupFunction → _handle_subscribe()
+              │  POST https://api.resend.com/contacts  {unsubscribed: false}
               ▼
          Resend Audience  ←  future broadcasts go to all contacts here
+```
+
+### Unsubscribe flow (two paths)
+
+**Path 1 — Resend native link (primary)**
+
+Every broadcast HTML contains `{{{RESEND_UNSUBSCRIBE_URL}}}` in the footer. Resend expands this to a per-recipient signed URL before delivery. Clicking it marks the contact `unsubscribed: true` directly in Resend — no Lambda invocation required.
+
+**Path 2 — Manual unsubscribe page (fallback)**
+
+```
+Visitor → signup/unsubscribe.html (S3 website, ?email= pre-fill)
+              │  POST /unsubscribe {"email": "..."}
+              ▼
+         API Gateway HTTP API
+              │
+              ▼
+         SignupFunction → _handle_unsubscribe()
+              │  POST https://api.resend.com/contacts  {unsubscribed: true}
+              ▼
+         Contact flagged unsubscribed in Resend (record preserved)
 ```
 
 ### Key details
@@ -386,19 +408,19 @@ Visitor → signup/subscribe.html (S3 website)
 | Aspect | Detail |
 |---|---|
 | **Lambda** | `ai-news-agent-signup`, 10s timeout, 128 MB, Python 3.12, stdlib only — no pip deps |
-| **API** | HTTP API (SAM auto-creates `ServerlessHttpApi`). `POST /subscribe`, `OPTIONS /subscribe` |
-| **CORS** | `Access-Control-Allow-Origin` is set to the S3 website URL via `SIGNUP_ALLOWED_ORIGIN` env var, which `template.yaml` injects automatically — not set in `.env` |
-| **Responses** | 200 for new/existing subscribers; 400 for invalid input or Resend validation failure (422); 502 for auth errors or upstream failures |
-| **Static page** | `signup/subscribe.html` contains the literal string `SIGNUP_API_URL`. `deploy.bat` replaces it with the live API Gateway URL and uploads to `SignupBucket` |
+| **API routes** | `POST /subscribe`, `OPTIONS /subscribe`, `POST /unsubscribe`, `OPTIONS /unsubscribe` — all handled by the same function |
+| **Route dispatch** | `handler()` inspects `event["rawPath"]` — paths ending in `/unsubscribe` go to `_handle_unsubscribe()`, all others to `_handle_subscribe()` |
+| **CORS** | `Access-Control-Allow-Origin` is set to the S3 website URL via `SIGNUP_ALLOWED_ORIGIN` env var, injected by `template.yaml` — not set in `.env` |
+| **Resend call** | Both routes call `_call_resend(email, unsubscribed, headers)` — same endpoint (`POST /contacts`), only `unsubscribed` differs |
+| **Responses** | 200 for success; 400 for invalid input or Resend 422; 502 for auth errors or upstream failures |
+| **Static pages** | `subscribe.html` contains `SIGNUP_API_URL`; `unsubscribe.html` contains `UNSUBSCRIBE_API_URL`. Both are replaced by `deploy.bat` before upload. |
 | **Public access** | `SignupBucket` has public read via a bucket policy — it is a static website, not a private store |
 
 ### Deployment
 
-`deploy.bat` handles signup page deployment automatically as its final step:
-1. Retrieves `SignupApiUrl` from CloudFormation outputs
-2. Replaces `SIGNUP_API_URL` in `signup/subscribe.html` and writes to a temp file
-3. Uploads `signup/subscribe.html.tmp` to `s3://ai-news-agent-signup-<AccountId>/subscribe.html`
-4. Deletes the temp file
+`deploy.bat` handles page deployment automatically after `sam deploy`:
+1. Retrieves `SignupApiUrl` → injects into `subscribe.html` → uploads to S3
+2. Retrieves `UnsubscribeApiUrl` → injects into `unsubscribe.html` → uploads to S3
 
 ---
 

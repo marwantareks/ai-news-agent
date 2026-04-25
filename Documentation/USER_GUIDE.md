@@ -199,7 +199,7 @@ The agent sends email via [Resend](https://resend.com) — a developer-friendly 
 
 ---
 
-## 9. Newsletter Signup Page
+## 9. Newsletter Signup & Unsubscribe
 
 A public signup page lets anyone subscribe to the digest without any manual steps on your end.
 
@@ -211,7 +211,23 @@ When someone submits their email:
 2. The backend Lambda adds the contact to your Resend Audience.
 3. The next broadcast automatically includes them.
 
-**Managing subscribers:** Resend dashboard → Audiences → your audience. You can view, add, or remove contacts here. Contacts can also unsubscribe themselves via the unsubscribe link included in every email.
+**Managing subscribers:** Resend dashboard → Audiences → your audience. You can view, add, or remove contacts here.
+
+### How subscribers unsubscribe
+
+There are two ways a subscriber can opt out:
+
+**1. Unsubscribe link in every email (primary)**
+Every broadcast contains an **Unsubscribe** link in the footer. Clicking it takes the subscriber to a Resend-hosted page that opts them out instantly — no email address entry required.
+
+**2. Manual unsubscribe page (fallback)**
+A static page at `/unsubscribe.html` on the same S3 site lets anyone enter their email to unsubscribe manually — useful when email links are blocked by their client.
+
+`http://ai-news-agent-signup-<AccountId>.s3-website-<region>.amazonaws.com/unsubscribe.html`
+
+The page also accepts a `?email=` query parameter for pre-filling (e.g. from a link in an email).
+
+In both cases the contact record is preserved in Resend — only the `unsubscribed` flag is set to `true`. If they later re-subscribe via the signup page, the flag is cleared and they receive future broadcasts again.
 
 ---
 
