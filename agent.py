@@ -15,9 +15,9 @@ load_dotenv()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 TAVILY_API_KEY    = os.getenv("TAVILY_API_KEY")
 
-EMAIL_TO       = os.getenv("EMAIL_TO", "")
-EMAIL_FROM     = os.getenv("EMAIL_FROM", "")
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+RESEND_AUDIENCE_ID = os.getenv("RESEND_AUDIENCE_ID", "")
+EMAIL_FROM         = os.getenv("EMAIL_FROM", "")
+RESEND_API_KEY     = os.getenv("RESEND_API_KEY", "")
 
 # AWS mode — set by template.yaml; absent in local mode
 S3_BUCKET = os.getenv("S3_BUCKET", "")
@@ -534,26 +534,25 @@ def generate_html(summary: dict, date_str: str) -> str:
 # ── Email delivery ────────────────────────────────────────────────────────────
 
 def send_email(html_content: str, date_str: str) -> None:
-    """Send the HTML report via Resend. Skipped if config is missing."""
+    """Send the HTML report as a Resend Broadcast to the audience. Skipped if config missing."""
     import resend
 
-    if not all([EMAIL_TO, EMAIL_FROM, RESEND_API_KEY]):
-        log.warning("Email config incomplete — skipping email. Set EMAIL_TO, EMAIL_FROM, RESEND_API_KEY in .env to enable.")
+    if not all([RESEND_AUDIENCE_ID, EMAIL_FROM, RESEND_API_KEY]):
+        log.warning("Email config incomplete — skipping. Set RESEND_AUDIENCE_ID, EMAIL_FROM, RESEND_API_KEY.")
         return
 
     resend.api_key = RESEND_API_KEY
-    recipients = [e.strip() for e in EMAIL_TO.split(",") if e.strip()]
     try:
-        resend.Emails.send({
-            "from": EMAIL_FROM,
-            "to": [EMAIL_FROM],
-            "bcc": recipients,
-            "subject": f"AI Learning Digest · {date_str}",
-            "html": html_content,
+        resend.Broadcasts.create({
+            "segment_id": RESEND_AUDIENCE_ID,
+            "from":       EMAIL_FROM,
+            "subject":    f"AI Learning Digest · {date_str}",
+            "html":       html_content,
+            "send":       True,
         })
-        log.info("Report emailed via Resend to %s", EMAIL_TO)
+        log.info("Broadcast sent via Resend audience %s", RESEND_AUDIENCE_ID)
     except Exception as e:
-        log.error("Resend send failed: %s", e)
+        log.error("Resend broadcast failed: %s", e)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

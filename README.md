@@ -101,8 +101,8 @@ Windows Task Scheduler                EventBridge cron(0 3 ? * TUE,FRI *)
                      ▼
         ┌─────────────────────────────────────────┐
         │  4. Deliver                              │
-        │  LOCAL: Save to reports/ + SMTP email   │
-        │  AWS:   Upload to S3 + SES email        │
+        │  LOCAL: Save to reports/ + Resend Broadcast │
+        │  AWS:   Upload to S3  + Resend Broadcast │
         └─────────────────────────────────────────┘
 ```
 
@@ -150,6 +150,18 @@ Windows Task Scheduler                EventBridge cron(0 3 ? * TUE,FRI *)
 
 ---
 
+## Newsletter Signup
+
+A public self-service signup page lets anyone subscribe to the digest without manual audience management.
+
+- **Signup page** — static HTML hosted on S3: `http://ai-news-agent-signup-<AccountId>.s3-website-<region>.amazonaws.com`
+- **API endpoint** — `POST /subscribe` with `{"email": "..."}` adds the contact to your Resend Audience. Returns 200 for both new and already-subscribed contacts.
+- Deployed automatically as part of `deploy.bat` — the live API URL is injected into `signup/subscribe.html` before upload.
+
+Once someone subscribes they receive every future broadcast automatically, since `send_email()` broadcasts to the entire audience.
+
+---
+
 ## Prerequisites
 
 | Requirement | Notes |
@@ -158,6 +170,7 @@ Windows Task Scheduler                EventBridge cron(0 3 ? * TUE,FRI *)
 | Python 3.10+ | Must be on your `PATH` |
 | Anthropic API key | [console.anthropic.com](https://console.anthropic.com) |
 | Tavily API key | [app.tavily.com](https://app.tavily.com) |
+| Resend account | [resend.com](https://resend.com) — required for email delivery. Create an API key, verify your sending domain, and create an Audience. |
 
 ---
 
@@ -178,15 +191,15 @@ Create a file named `.env` in the project root:
 ANTHROPIC_API_KEY=sk-ant-...
 TAVILY_API_KEY=tvly-...
 
-# Email delivery via Resend (optional — leave blank to disable)
-EMAIL_TO=you@example.com
-EMAIL_FROM=digest@your-verified-domain.com
+# Email delivery via Resend Broadcasts (optional — leave blank to disable)
 RESEND_API_KEY=re_...
+RESEND_AUDIENCE_ID=aud_...
+EMAIL_FROM=digest@your-verified-domain.com
 ```
 
-> **Resend setup:** Sign up at [resend.com](https://resend.com), create an API key, and verify your sending domain. `EMAIL_FROM` must be on a domain verified in your Resend account. For quick testing, use `onboarding@resend.dev` (Resend's shared sender — can only deliver to your Resend account's registered email address).
+> **Resend setup:** Sign up at [resend.com](https://resend.com), create an API key, verify your sending domain, and create an Audience. `EMAIL_FROM` must be on a domain verified in your Resend account. `RESEND_AUDIENCE_ID` is the ID of the Audience whose contacts will receive each broadcast (format: `aud_xxxxxxxx`, found in Resend → Audiences).
 >
-> If any of `EMAIL_TO`, `EMAIL_FROM`, or `RESEND_API_KEY` is blank the agent skips email silently and just saves the HTML file as normal.
+> If any of `RESEND_AUDIENCE_ID`, `EMAIL_FROM`, or `RESEND_API_KEY` is blank the agent skips email silently and just saves the HTML file as normal.
 
 ### 3. Run the one-time setup
 
@@ -246,16 +259,19 @@ If `EMAIL_*` vars are configured, the same report is also **emailed to you autom
 ```
 ai-news-agent/
 ├── agent.py               # Main agent logic (search → curate → HTML → email + Lambda handler)
-├── template.yaml          # AWS SAM template (Lambda + EventBridge + S3 + IAM)
+├── template.yaml          # AWS SAM template (Lambda + EventBridge + S3 + IAM + signup infra)
 ├── samconfig.toml         # SAM deploy config (generated; not committed to git)
 ├── requirements.txt       # Python dependencies
 ├── setup.bat              # One-time local setup (venv + Windows scheduler)
 ├── run_agent.bat          # Manual local run shortcut
-├── deploy.bat             # SAM build + deploy to AWS (Windows helper)
+├── deploy.bat             # SAM build + deploy to AWS, then uploads signup page to S3
 ├── setup_scheduler.ps1    # Registers the Windows Task Scheduler job
 ├── CLAUDE.md              # Architecture guide for Claude Code
 ├── .env                   # API keys and email config (not committed to git)
 ├── agent.log              # Append-only run log — local mode only
+├── signup/
+│   ├── handler.py         # Lambda handler for POST /subscribe (stdlib only, no pip deps)
+│   └── subscribe.html     # Static signup page (SIGNUP_API_URL placeholder replaced at deploy)
 ├── Documentation/
 │   ├── ARCHITECTURE.md    # Full technical architecture, pipeline, schemas, AWS infra
 │   └── USER_GUIDE.md      # End-user guide: env vars, AWS Console steps, monitoring
@@ -273,7 +289,7 @@ ai-news-agent/
 | `tavily-python` | Web + YouTube search API client |
 | `python-dotenv` | Loads `.env` file into environment variables |
 | `boto3` | AWS SDK — used for S3 in cloud deployment mode |
-| `resend` | Resend HTTP API client — email delivery in both local and AWS modes |
+| `resend` | Resend SDK — creates and sends Broadcasts to all audience contacts (local and AWS modes) |
 
 ### Environment variables
 
@@ -281,9 +297,9 @@ ai-news-agent/
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude Haiku |
 | `TAVILY_API_KEY` | Yes | Tavily search API key |
-| `EMAIL_TO` | No | Comma-separated recipient email addresses |
-| `EMAIL_FROM` | No | Sender address — must be on a Resend-verified domain |
 | `RESEND_API_KEY` | No | Resend API key — required for email delivery |
+| `RESEND_AUDIENCE_ID` | No | Resend Audience ID (e.g. `aud_xxxxxxxx`) — all contacts in the audience receive each broadcast |
+| `EMAIL_FROM` | No | Sender address — must be on a Resend-verified domain |
 | `S3_BUCKET` | AWS mode | S3 bucket name. When set, enables AWS mode: S3 storage. Set automatically by `template.yaml`. |
 
 > `S3_BUCKET` is set automatically by `template.yaml` when deployed to Lambda. Do not add it to your local `.env`.
@@ -292,7 +308,7 @@ ai-news-agent/
 
 ## AWS Deployment
 
-The agent can run as an AWS Lambda function triggered daily by EventBridge, storing reports in S3 and delivering email via SES — no server required.
+The agent can run as an AWS Lambda function triggered by EventBridge, storing reports in S3 and delivering email via the Resend Broadcasts API — no server required.
 
 ### Prerequisites
 
@@ -315,17 +331,30 @@ Enter your Access Key ID, Secret Access Key, default region (`us-east-1`), and o
 
 **2. Set up Resend**
 
-Sign up at [resend.com](https://resend.com), create an API key, and verify your sending domain. Add `RESEND_API_KEY` to your `.env` file.
+1. Sign up at [resend.com](https://resend.com) and create an **API key**. Add it to `.env` as `RESEND_API_KEY=re_...`.
+2. Go to **Domains** → **Add Domain** and verify your sending domain. Set `EMAIL_FROM` in `.env` to an address on that domain (e.g. `digest@yourdomain.com`).
+3. Go to **Audiences** → **Create Audience**. Copy the Audience ID (format: `aud_xxxxxxxx`) and add it to `.env` as `RESEND_AUDIENCE_ID=aud_...`.
+4. Add yourself as a contact: Audiences → your audience → **Add Contact** — otherwise you won't receive the first broadcast.
 
 > Do NOT manually create the S3 bucket, Lambda function, or EventBridge rule — SAM creates everything automatically.
 
 ### Deploy
 
-**Windows helper — automatically loads your `.env` file and passes all keys as SAM parameters:**
+**Windows helper — run from an existing cmd window (not by double-clicking):**
 
 ```bat
+cd C:\MyProjects\ai-news-agent
 deploy.bat
 ```
+
+`deploy.bat` performs three steps automatically:
+1. **`sam build`** — packages `agent.py` and dependencies into a Lambda deployment ZIP
+2. **`sam deploy`** — creates/updates all AWS resources and injects your `.env` values as Lambda env vars
+3. **Signup page upload** — retrieves the live API Gateway URL from CloudFormation outputs, injects it into `signup/subscribe.html`, and uploads it to the S3 website bucket
+
+After deploy, the two public URLs are printed in the summary:
+- **SignupPageUrl** — the public newsletter signup page
+- **SignupApiUrl** — the API endpoint (for reference; not needed manually)
 
 Or run SAM directly — first time (interactive prompts):
 
@@ -338,6 +367,8 @@ All subsequent updates:
 ```bash
 sam build && sam deploy
 ```
+
+> **Note:** Running SAM directly skips the signup page upload. Use `deploy.bat` to keep the signup page in sync.
 
 ### How it runs on AWS
 
@@ -367,8 +398,8 @@ EventBridge cron(0 3 ? * TUE,FRI *)   →   Lambda (agent.lambda_handler)
 | Scheduled task not running | Open Task Scheduler, find `AI-News-Agent-Weekly`, run it manually to test |
 | UAC / permission error during setup | Right-click `setup.bat` → **Run as administrator** |
 | No YouTube results | Tavily indexes YouTube — results depend on availability for that query and week |
-| `Resend send failed` in log | Check `RESEND_API_KEY` is valid and `EMAIL_FROM` is on a Resend-verified domain. Check Resend dashboard → Logs for delivery details. |
-| Email not delivered | Check spam folder. Verify `EMAIL_TO` and `EMAIL_FROM` are correct. Confirm `RESEND_API_KEY` is set in Lambda env vars. |
+| `Resend broadcast failed` in log | Check `RESEND_API_KEY` is valid, `RESEND_AUDIENCE_ID` is correct, and `EMAIL_FROM` is on a Resend-verified domain. Check Resend dashboard → Broadcasts for delivery details. |
+| Email not delivered | Check spam folder. Confirm you are a contact in the Resend Audience. Verify `RESEND_API_KEY` and `RESEND_AUDIENCE_ID` are set in Lambda env vars. |
 | Email arrives but looks broken | Ensure your email client renders HTML; try a different client |
 | `sam build` fails — Python version error | Install Python 3.12 and add to PATH, or use `sam build --use-container` (requires Docker) |
 | `sam deploy` fails — `CAPABILITY_NAMED_IAM` | Ensure `capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"` is in `samconfig.toml` |

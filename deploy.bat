@@ -61,9 +61,9 @@ cmd /c sam deploy ^
     --parameter-overrides ^
         AnthropicApiKey=%ANTHROPIC_API_KEY% ^
         TavilyApiKey=%TAVILY_API_KEY% ^
-        EmailTo=%EMAIL_TO% ^
         EmailFrom=%EMAIL_FROM% ^
-        ResendApiKey=%RESEND_API_KEY%
+        ResendApiKey=%RESEND_API_KEY% ^
+        ResendAudienceId=%RESEND_AUDIENCE_ID%
 
 IF ERRORLEVEL 1 (
     echo.
@@ -73,11 +73,28 @@ IF ERRORLEVEL 1 (
 )
 
 echo.
+echo [3/3] Uploading signup page to S3...
+
+rem Retrieve AWS account ID
+for /f "tokens=*" %%i in ('aws sts get-caller-identity --query "Account" --output text') do set AWS_ACCOUNT_ID=%%i
+
+rem Retrieve SignupApiUrl from stack outputs
+for /f "tokens=*" %%i in ('aws cloudformation describe-stacks --stack-name %STACK% --query "Stacks[0].Outputs[?OutputKey=='SignupApiUrl'].OutputValue" --output text') do set SIGNUP_API_URL=%%i
+
+rem Inject API URL into subscribe.html and upload to S3
+powershell -Command "(Get-Content signup\subscribe.html) -replace 'SIGNUP_API_URL', '%SIGNUP_API_URL%' | Set-Content signup\subscribe.html.tmp"
+aws s3 cp signup\subscribe.html.tmp s3://ai-news-agent-signup-%AWS_ACCOUNT_ID%/subscribe.html --content-type text/html
+del signup\subscribe.html.tmp
+
+echo.
 echo ===================================================
 echo  Deployment complete!
-echo  - Lambda runs daily at 03:00 UTC
+echo  - Lambda runs Tue/Fri at 03:00 UTC
 echo  - Logs: CloudWatch /aws/lambda/ai-news-agent
-echo  - Reports: S3 bucket ai-news-agent-reports-^<AccountId^>
+echo  - Reports: S3 bucket ai-news-agent-reports-%AWS_ACCOUNT_ID%
+echo  - Signup page: http://ai-news-agent-signup-%AWS_ACCOUNT_ID%.s3-website-%REGION%.amazonaws.com
+echo  - Signup API:  %SIGNUP_API_URL%
 echo ===================================================
 echo.
 echo NOTE: Ensure EMAIL_FROM is on a Resend-verified domain.
+echo NOTE: Ensure RESEND_AUDIENCE_ID is set in .env before deploying.

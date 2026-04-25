@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AI Learning Digest — Subscribe</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #222;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 2.5rem 2rem;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 2px 12px rgba(0,0,0,.1);
+    }
+
+    .badge {
+      display: inline-block;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      font-size: .68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      padding: .3rem .7rem;
+      border-radius: 20px;
+      margin-bottom: 1.2rem;
+    }
+
+    h1 {
+      font-size: 1.7rem;
+      color: #111;
+      margin-bottom: .6rem;
+      line-height: 1.25;
+    }
+
+    .subtitle {
+      font-size: .95rem;
+      color: #555;
+      line-height: 1.65;
+      margin-bottom: 1rem;
+    }
+
+    .schedule {
+      background: #f8f8fb;
+      border: 1px solid #e8e8f0;
+      border-radius: 8px;
+      padding: .9rem 1.1rem;
+      font-size: .85rem;
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 1.8rem;
+    }
+
+    .schedule strong { color: #333; }
+
+    form { display: flex; flex-direction: column; gap: .75rem; }
+
+    label {
+      font-size: .82rem;
+      font-weight: 600;
+      color: #444;
+    }
+
+    input[type="email"] {
+      width: 100%;
+      padding: .75rem 1rem;
+      font-size: .95rem;
+      border: 1.5px solid #ddd;
+      border-radius: 8px;
+      outline: none;
+      transition: border-color .15s;
+      color: #222;
+      background: #fff;
+    }
+
+    input[type="email"]:focus { border-color: #667eea; }
+
+    button {
+      padding: .8rem 1rem;
+      font-size: .95rem;
+      font-weight: 600;
+      color: #fff;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+
+    button:hover   { opacity: .9; }
+    button:disabled { opacity: .6; cursor: default; }
+
+    #status {
+      font-size: .88rem;
+      padding: .7rem 1rem;
+      border-radius: 8px;
+      display: none;
+      line-height: 1.5;
+    }
+
+    #status.success {
+      background: #d1fae5;
+      color: #065f46;
+      display: block;
+    }
+
+    #status.error {
+      background: #fee2e2;
+      color: #991b1b;
+      display: block;
+    }
+
+    footer {
+      margin-top: 1.8rem;
+      font-size: .78rem;
+      color: #bbb;
+      text-align: center;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body   { background: #18191a; color: #e4e6eb; }
+      .card  { background: #242526; box-shadow: none; }
+      h1     { color: #e4e6eb; }
+      .subtitle { color: #aaa; }
+      .schedule { background: #2a2b2d; border-color: #3a3b3c; color: #999; }
+      .schedule strong { color: #ccc; }
+      label  { color: #bbb; }
+      input[type="email"] {
+        background: #18191a;
+        border-color: #3a3b3c;
+        color: #e4e6eb;
+      }
+      input[type="email"]:focus { border-color: #667eea; }
+      #status.success { background: #052e16; color: #6ee7b7; }
+      #status.error   { background: #2d0a0a; color: #fca5a5; }
+      footer { color: #555; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">Free Newsletter</div>
+    <h1>AI Learning Digest</h1>
+    <p class="subtitle">
+      A curated digest of the best AI learning resources, handpicked for software developers and
+      solution architects. Each edition covers 10 topics — from Generative AI fundamentals and
+      agentic coding to RAG architecture and LLMOps — with articles, tutorials, and videos ranked
+      by educational value.
+    </p>
+    <div class="schedule">
+      <strong>What you get:</strong> 10 curated topics · developer &amp; architect tracks ·
+      articles, tutorials, and videos · a "Concept of the Day" explained in plain English.<br>
+      <strong>Sent:</strong> Every Tuesday and Friday at 03:00 UTC.
+    </div>
+
+    <form id="signup-form" novalidate>
+      <label for="email">Your email address</label>
+      <input
+        type="email"
+        id="email"
+        name="email"
+        placeholder="you@example.com"
+        required
+        autocomplete="email"
+      >
+      <div id="status" role="alert" aria-live="polite"></div>
+      <button type="submit" id="submit-btn">Subscribe</button>
+    </form>
+
+    <footer>No spam. Unsubscribe any time via the link in any email.</footer>
+  </div>
+
+  <script>
+    var API_URL = "SIGNUP_API_URL";
+
+    var form      = document.getElementById("signup-form");
+    var emailEl   = document.getElementById("email");
+    var submitBtn = document.getElementById("submit-btn");
+    var statusEl  = document.getElementById("status");
+
+    function showStatus(msg, type) {
+      statusEl.textContent = msg;
+      statusEl.className   = type;
+    }
+
+    function isValidEmail(val) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim());
+    }
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var email = emailEl.value.trim();
+
+      if (!isValidEmail(email)) {
+        showStatus("Please enter a valid email address.", "error");
+        emailEl.focus();
+        return;
+      }
+
+      submitBtn.disabled   = true;
+      submitBtn.textContent = "Subscribing…";
+      statusEl.className   = "";
+      statusEl.textContent = "";
+
+      fetch(API_URL, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email: email }),
+      })
+        .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
+        .then(function (r) {
+          if (r.ok) {
+            showStatus(
+              r.data.message === "Already subscribed"
+                ? "You are already subscribed — check your inbox!"
+                : "You're subscribed! Your first digest arrives on the next send day.",
+              "success"
+            );
+            emailEl.value    = "";
+            submitBtn.disabled   = false;
+            submitBtn.textContent = "Subscribe";
+          } else {
+            showStatus("Something went wrong. Please try again shortly.", "error");
+            submitBtn.disabled   = false;
+            submitBtn.textContent = "Subscribe";
+          }
+        })
+        .catch(function () {
+          showStatus("Network error. Please check your connection and try again.", "error");
+          submitBtn.disabled   = false;
+          submitBtn.textContent = "Subscribe";
+        });
+    });
+  </script>
+</body>
+</html>

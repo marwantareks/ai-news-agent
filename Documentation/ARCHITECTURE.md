@@ -31,16 +31,19 @@ The AI Learning Digest Agent is a Python application that runs on a schedule to 
 ```
 ai-news-agent/
 ├── agent.py               # Entire application: search → curate → HTML → email + Lambda handler
-├── template.yaml          # AWS SAM template (Lambda + EventBridge + S3 + IAM role)
+├── template.yaml          # AWS SAM template (Lambda + EventBridge + S3 + IAM + signup infra)
 ├── samconfig.toml         # SAM deploy config (auto-generated; not committed to git)
-├── requirements.txt       # Python deps: anthropic, tavily-python, python-dotenv, boto3
+├── requirements.txt       # Python deps: anthropic, tavily-python, python-dotenv, boto3, resend
 ├── setup.bat              # One-time local setup: creates venv + registers Windows scheduler
 ├── run_agent.bat          # Local run shortcut: activates venv, calls agent.py
-├── deploy.bat             # Windows helper: loads .env vars, runs sam build && sam deploy
+├── deploy.bat             # Windows helper: sam build + deploy, then uploads signup page to S3
 ├── setup_scheduler.ps1    # PowerShell script called by setup.bat to register the scheduled task
 ├── CLAUDE.md              # Architecture notes for Claude Code AI assistant
 ├── .env                   # API keys and email config (never committed to git)
 ├── agent.log              # Append-only run log (local mode only)
+├── signup/
+│   ├── handler.py         # Lambda handler for POST /subscribe (stdlib only, no pip deps)
+│   └── subscribe.html     # Static signup page (SIGNUP_API_URL placeholder injected at deploy)
 ├── Documentation/
 │   ├── ARCHITECTURE.md    # This file
 │   └── USER_GUIDE.md      # End-user guide: env vars, AWS Console steps, testing
@@ -108,13 +111,13 @@ ai-news-agent/
 ┌─────────────────────────────────────────────────────────────────┐
 │  STAGE 4 — DELIVER                                              │
 │                                                                 │
-│  Local mode:                                                    │
-│    - Write to reports/YYYY-MM-DD-ai-learning.html               │
-│    - Send via Resend HTTP API if EMAIL_*, RESEND_API_KEY set    │
-│                                                                 │
-│  AWS mode:                                                      │
-│    - Upload to S3: s3://<bucket>/YYYY-MM-DD-ai-learning.html    │
-│    - Send via Resend HTTP API if EMAIL_*, RESEND_API_KEY set    │
+│  Local mode:                                                          │
+│    - Write to reports/YYYY-MM-DD-ai-learning.html                     │
+│    - Send Resend Broadcast to audience if config vars set             │
+│                                                                       │
+│  AWS mode:                                                            │
+│    - Upload to S3: s3://<bucket>/YYYY-MM-DD-ai-learning.html          │
+│    - Send Resend Broadcast to audience if config vars set             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -129,8 +132,8 @@ ai-news-agent/
 | **Entry point** | `if __name__ == "__main__": main()` | `lambda_handler(event, context)` calls `main()` |
 | **Idempotency check** | `Path.exists()` on local report file | `s3.head_object()` — 404 = not yet run, anything else = skip |
 | **Report storage** | `reports/YYYY-MM-DD-ai-learning.html` | `s3://<bucket>/YYYY-MM-DD-ai-learning.html` |
-| **Email function** | `send_email()` via Resend HTTP API | `send_email()` via Resend HTTP API (same function) |
-| **Email auth** | `RESEND_API_KEY` env var | `RESEND_API_KEY` Lambda env var (set via SAM parameter) |
+| **Email function** | `send_email()` — Resend Broadcast to `RESEND_AUDIENCE_ID` | `send_email()` — same function, same Resend Broadcast path |
+| **Email auth** | `RESEND_API_KEY` + `RESEND_AUDIENCE_ID` env vars | Same, injected as Lambda env vars via SAM parameters |
 | **Logging** | stdout + `agent.log` (FileHandler appended) | stdout only (CloudWatch captures automatically) |
 | **FileHandler** | Added when `S3_BUCKET` is empty | Skipped (Lambda's read-only FS — FileHandler would fail) |
 | **Dependencies** | All in local `venv/` | Packaged by `sam build` into Lambda deployment ZIP |
@@ -148,6 +151,9 @@ All resources are defined in `template.yaml` and deployed via SAM.
 | `WeeklySchedule` | EventBridge Schedule (SAM `Events`) | `cron(0 3 ? * TUE,FRI *)` — fires Tuesdays and Fridays at 03:00 UTC |
 | `ReportsBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-reports-<AccountId>`, lifecycle: delete objects after 90 days |
 | `AgentExecutionRole` | `AWS::IAM::Role` | Name: `ai-news-agent-lambda-role` |
+| `SignupFunction` | `AWS::Serverless::Function` | Name: `ai-news-agent-signup`, handler: `signup/handler.handler`, runtime: `python3.12`, memory: 128 MB, timeout: 10s. stdlib only — no pip deps. |
+| `ServerlessHttpApi` | HTTP API (auto-created by SAM) | Exposes `POST /subscribe` and `OPTIONS /subscribe` |
+| `SignupBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-signup-<AccountId>`. Public S3 static website hosting `subscribe.html`. |
 
 ### IAM Permissions
 
@@ -159,7 +165,7 @@ All resources are defined in `template.yaml` and deployed via SAM.
 
 > **Note:** `s3:ListBucket` must be on the bucket ARN (not `/*`) to allow `head_object` to distinguish "file not found" (404) from "access denied" (403). Without it, the idempotency check would raise an exception on the first run of each day.
 
-> **No SES permissions required.** Email is sent via the Resend HTTP API using `RESEND_API_KEY`. Changing `EMAIL_FROM` or `EMAIL_TO` requires only a `.env` update and a redeploy (or a direct Lambda console edit) — no IAM policy changes needed.
+> **No SES permissions required.** Email is sent via the Resend HTTP API using `RESEND_API_KEY`. Changing `EMAIL_FROM` or `RESEND_AUDIENCE_ID` requires only a `.env` update and a redeploy (or a direct Lambda console edit) — no IAM policy changes needed.
 
 ---
 
@@ -252,12 +258,12 @@ Valid values:
 |---|---|---|---|---|
 | `ANTHROPIC_API_KEY` | — | Yes | Both | Anthropic API key for Claude Haiku |
 | `TAVILY_API_KEY` | — | Yes | Both | Tavily search API key |
-| `EMAIL_TO` | `""` | No | Both | Comma-separated recipient email addresses |
-| `EMAIL_FROM` | `""` | No | Both | Sender address — must be on a Resend-verified domain |
 | `RESEND_API_KEY` | `""` | No | Both | Resend API key — required for email delivery in both modes |
+| `RESEND_AUDIENCE_ID` | `""` | No | Both | Resend Audience ID (e.g. `aud_xxxxxxxx`) — all contacts in the audience receive each broadcast |
+| `EMAIL_FROM` | `""` | No | Both | Sender address — must be on a Resend-verified domain |
 | `S3_BUCKET` | `""` | AWS mode | AWS only | S3 bucket name — presence of this var gates AWS mode. Set automatically by SAM template. |
 
-> `S3_BUCKET` is injected by `template.yaml` into the Lambda environment automatically. Do not add it to your local `.env`. `RESEND_API_KEY` is passed as the `ResendApiKey` SAM parameter and becomes a Lambda env var after deploy.
+> `S3_BUCKET` is injected by `template.yaml` into the Lambda environment automatically. Do not add it to your local `.env`. `RESEND_API_KEY` and `RESEND_AUDIENCE_ID` are passed as SAM parameters (`ResendApiKey`, `ResendAudienceId`) and become Lambda env vars after deploy.
 
 ---
 
@@ -349,14 +355,54 @@ Costs assume daily operation in AWS mode with default settings.
 | Claude Haiku | 2 calls, ~3k tokens input + ~1k output each | ~$0.002 | ~$0.06 |
 | Lambda | 1 invocation, ~90s, 256 MB | ~$0.000003 | ~$0.0001 |
 | S3 storage | 1 HTML file ~50–100 KB, deleted after 90 days | ~$0.000001 | Negligible |
-| SES | 1 email | $0.0001 | ~$0.003 |
+| Resend | 1 broadcast to N contacts | Free tier: 3,000 emails/month | ~$0 (small audience) |
 | **Total** | | **~$0.01–0.05** | **~$0.36–$1.50** |
 
-> Tavily costs dominate. Check your Tavily plan limits — the free tier includes 1,000 searches/month, which covers ~50 daily runs.
+> Tavily costs dominate. Check your Tavily plan limits — the free tier includes 1,000 searches/month, which covers ~50 runs. Resend free tier covers 3,000 emails/month; cost scales with audience size beyond that.
 
 ---
 
-## 14. Local Development Setup
+## 14. Newsletter Signup
+
+A second Lambda + HTTP API + S3 static site provides self-service newsletter signup.
+
+### Flow
+
+```
+Visitor → signup/subscribe.html (S3 website)
+              │  POST /subscribe {"email": "..."}
+              ▼
+         API Gateway HTTP API (auto-created by SAM)
+              │
+              ▼
+         SignupFunction (signup/handler.handler)
+              │  POST https://api.resend.com/contacts
+              ▼
+         Resend Audience  ←  future broadcasts go to all contacts here
+```
+
+### Key details
+
+| Aspect | Detail |
+|---|---|
+| **Lambda** | `ai-news-agent-signup`, 10s timeout, 128 MB, Python 3.12, stdlib only — no pip deps |
+| **API** | HTTP API (SAM auto-creates `ServerlessHttpApi`). `POST /subscribe`, `OPTIONS /subscribe` |
+| **CORS** | `Access-Control-Allow-Origin` is set to the S3 website URL via `SIGNUP_ALLOWED_ORIGIN` env var, which `template.yaml` injects automatically — not set in `.env` |
+| **Responses** | 200 for new/existing subscribers; 400 for invalid input or Resend validation failure (422); 502 for auth errors or upstream failures |
+| **Static page** | `signup/subscribe.html` contains the literal string `SIGNUP_API_URL`. `deploy.bat` replaces it with the live API Gateway URL and uploads to `SignupBucket` |
+| **Public access** | `SignupBucket` has public read via a bucket policy — it is a static website, not a private store |
+
+### Deployment
+
+`deploy.bat` handles signup page deployment automatically as its final step:
+1. Retrieves `SignupApiUrl` from CloudFormation outputs
+2. Replaces `SIGNUP_API_URL` in `signup/subscribe.html` and writes to a temp file
+3. Uploads `signup/subscribe.html.tmp` to `s3://ai-news-agent-signup-<AccountId>/subscribe.html`
+4. Deletes the temp file
+
+---
+
+## 15. Local Development Setup
 
 ```bash
 # 1. Clone the repository

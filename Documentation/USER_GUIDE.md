@@ -23,13 +23,15 @@ These are the settings that control how the agent works. They are stored in AWS 
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Your Claude API key — the agent uses Claude to curate and rank resources | `sk-ant-api03-...` |
 | `TAVILY_API_KEY` | Your Tavily search API key — the agent uses this to search the web and YouTube | `tvly-...` |
-| `EMAIL_TO` | The email address(es) where your digest is sent (comma-separated for multiple) | `you@example.com` |
+| `RESEND_API_KEY` | Your Resend API key — used to send the digest as a Broadcast to your audience | `re_...` |
+| `RESEND_AUDIENCE_ID` | Your Resend Audience ID — every contact in this audience receives each broadcast | `aud_xxxxxxxx` |
 | `EMAIL_FROM` | The sender address shown in the "From" field of the email | `digest@yourdomain.com` |
-| `RESEND_API_KEY` | Your Resend API key — used to send the HTML email via the Resend HTTP API | `re_...` |
 
-> **Important:** `EMAIL_FROM` must be an address on a domain you have verified in your [Resend](https://resend.com) account. Free Resend accounts include a shared `onboarding@resend.dev` sender for testing. For production use, add and verify your own domain in the Resend dashboard.
+> **Important:** `EMAIL_FROM` must be an address on a domain you have verified in your [Resend](https://resend.com) account. `RESEND_AUDIENCE_ID` is found in the Resend dashboard under **Audiences** — it looks like `aud_xxxxxxxx`.
 
-> **Changing `EMAIL_FROM` or `EMAIL_TO`:** Unlike SES, Resend does not require IAM policy updates when changing addresses. Simply update `EMAIL_FROM` or `EMAIL_TO` in your `.env` file and run `deploy.bat` to push the new values to Lambda.
+> **Who receives the digest?** Every contact in your Resend Audience. New subscribers added via the signup page are automatically included in all future broadcasts. To add yourself manually: Resend dashboard → Audiences → your audience → Add Contact.
+
+> **Changing `EMAIL_FROM`:** Resend does not require IAM policy updates when changing addresses. Update `EMAIL_FROM` in your `.env` file and run `deploy.bat` to push the new value to Lambda, or update it directly in the Lambda console (Configuration → Environment variables).
 
 ---
 
@@ -81,7 +83,7 @@ The test tab shows "Executing function..." while it runs. Wait for it to complet
 
 ### Step 4: Check your email inbox
 
-Check the inbox for the `EMAIL_TO` address. The subject line will be:
+Check the inbox for any contact in your Resend Audience. The subject line will be:
 
 ```
 AI Learning Digest · YYYY-MM-DD
@@ -119,7 +121,7 @@ The agent logs every step of its run to AWS CloudWatch.
 | `Report emailed via Resend to you@example.com` | Email sent successfully |
 | `Report for YYYY-MM-DD already exists in S3. Skipping.` | Agent skipped — already ran today (normal behavior) |
 | `WARNING ... query '...' failed` | One Tavily search failed — not fatal, run continues |
-| `ERROR Resend send failed` | Email failed — report is still in S3; check `RESEND_API_KEY` and `EMAIL_FROM` domain |
+| `ERROR Resend broadcast failed` | Broadcast failed — report is still in S3; check `RESEND_API_KEY`, `RESEND_AUDIENCE_ID`, and `EMAIL_FROM` domain |
 | `ERROR Missing API keys` | API keys not set or incorrect |
 
 ### Filtering logs
@@ -167,13 +169,15 @@ This means:
 
 ## 8. Resend Email Setup
 
-The agent sends email via [Resend](https://resend.com) — a developer-friendly email API that works for both local and AWS modes without any IAM configuration.
+The agent sends email via [Resend](https://resend.com) — a developer-friendly email API that works for both local and AWS modes without any IAM configuration. Email is sent as a **Broadcast** to all contacts in a Resend Audience.
 
 ### One-time setup
 
 1. Sign up at [resend.com](https://resend.com) and create an API key in the Resend dashboard.
 2. Add the key to your `.env` file as `RESEND_API_KEY=re_...`.
-3. Set `EMAIL_FROM` to a sender address on a domain you own and have verified in Resend (see below).
+3. In the Resend dashboard, go to **Audiences** → **Create Audience**. Copy the Audience ID (format: `aud_xxxxxxxx`) and add it to your `.env` as `RESEND_AUDIENCE_ID=aud_...`.
+4. Set `EMAIL_FROM` to a sender address on a domain you own and have verified in Resend (see below).
+5. Add yourself as a contact: Resend → Audiences → your audience → **Add Contact**.
 
 ### How to verify a sending domain in Resend
 
@@ -187,22 +191,36 @@ The agent sends email via [Resend](https://resend.com) — a developer-friendly 
 
 ### Changing the sender address after deployment
 
-If you want to use a different `EMAIL_FROM` address in the future:
-
 1. Verify the new domain in Resend (steps above).
 2. Update `EMAIL_FROM` in your `.env` file.
 3. Run `deploy.bat` — this pushes the new value to the Lambda environment variable.
 
-> You can also update `EMAIL_FROM` directly in the Lambda console (Configuration → Environment variables) without redeploying — Resend has no IAM policy constraints tied to the sender address.
+> You can also update `EMAIL_FROM` directly in the Lambda console (Configuration → Environment variables) without redeploying.
 
 ---
 
-## 9. Troubleshooting
+## 9. Newsletter Signup Page
+
+A public signup page lets anyone subscribe to the digest without any manual steps on your end.
+
+**Signup page URL:** `http://ai-news-agent-signup-<AccountId>.s3-website-<region>.amazonaws.com`
+(printed at the end of every `deploy.bat` run)
+
+When someone submits their email:
+1. The page calls `POST /subscribe` on the API Gateway endpoint.
+2. The backend Lambda adds the contact to your Resend Audience.
+3. The next broadcast automatically includes them.
+
+**Managing subscribers:** Resend dashboard → Audiences → your audience. You can view, add, or remove contacts here. Contacts can also unsubscribe themselves via the unsubscribe link included in every email.
+
+---
+
+## 10. Troubleshooting
 
 | Problem | What to check |
 |---|---|
-| **Email not received** | Check your spam/junk folder. Verify `EMAIL_TO` and `RESEND_API_KEY` are set in Lambda environment variables. |
-| **`Resend send failed` in CloudWatch** | Check that `RESEND_API_KEY` is valid and `EMAIL_FROM` is on a verified Resend domain. Open the Resend dashboard → Logs to see the delivery attempt. |
+| **Email not received** | Check your spam/junk folder. Confirm you are a contact in the Resend Audience (`RESEND_AUDIENCE_ID`). Verify `RESEND_API_KEY` is set in Lambda environment variables. |
+| **`Resend broadcast failed` in CloudWatch** | Check that `RESEND_API_KEY` is valid, `RESEND_AUDIENCE_ID` is correct, and `EMAIL_FROM` is on a verified Resend domain. Open Resend dashboard → Broadcasts to see delivery details. |
 | **Email arrives but "From" shows wrong address** | Update `EMAIL_FROM` in `.env` and redeploy with `deploy.bat`, or update it directly in Lambda → Configuration → Environment variables. |
 | **Lambda timed out** | Check CloudWatch logs for which stage it was in. Most likely cause: invalid API key preventing Tavily or Claude from responding. Verify `ANTHROPIC_API_KEY` and `TAVILY_API_KEY` are correct. |
 | **No report in S3 after Lambda ran** | Open CloudWatch logs for that run and look for `ERROR` lines. Common causes: API keys missing or expired, Tavily quota exceeded. |
