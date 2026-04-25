@@ -424,7 +424,30 @@ Visitor → signup/unsubscribe.html (S3 website, ?email= pre-fill)
 
 ---
 
-## 15. Local Development Setup
+## 15. Analytics
+
+Open rates and click tracking are provided by **Resend's built-in broadcast analytics** — no custom code or additional infrastructure required.
+
+### What is tracked
+
+| Metric | How it works |
+|---|---|
+| **Open rate** | Resend injects a 1×1 tracking pixel into each broadcast. A pixel load counts as an open. |
+| **Click rate** | Resend wraps all links in the broadcast HTML with its own redirect URLs. Each click is recorded before the reader is forwarded to the destination. |
+| **Unsubscribes** | Tracked natively via the `{{{RESEND_UNSUBSCRIBE_URL}}}` footer link. |
+
+### Where to view stats
+
+Resend dashboard → **Broadcasts** → select a broadcast → **Analytics** tab. Metrics are aggregated per broadcast: total sends, unique opens, open rate, unique clicks, click rate, unsubscribes.
+
+### What is not tracked
+
+- Per-link breakdown (which specific article was clicked most) — Resend reports aggregate click counts, not per-URL counts. To get per-link data, add UTM parameters (`utm_source`, `utm_campaign`, `utm_content`) to outbound URLs in `build_cards()` — destination sites with Google Analytics or similar will report on them.
+- S3 report page views — the emailed HTML links to external sources, not to the S3 report. Enable S3 Server Access Logging on `ReportsBucket` if you need to track direct report URL access.
+
+---
+
+## 16. Local Development Setup
 
 ```bash
 # 1. Clone the repository

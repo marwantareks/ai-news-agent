@@ -257,6 +257,16 @@ Search results:
 
 TYPE_ICONS = {"video": "▶", "article": "📄"}
 
+_BADGE_TYPE = {
+    "video":   "background:#fff0f0;color:#c0392b;",
+    "article": "background:#f0f4ff;color:#2c5282;",
+}
+_BADGE_DIFF = {
+    "beginner":     "background:#d1fae5;color:#065f46;",
+    "intermediate": "background:#fef3c7;color:#92400e;",
+    "advanced":     "background:#fee2e2;color:#991b1b;",
+}
+
 SECTION_META = {
     "developer": {
         "label":       "Developer Track",
@@ -321,26 +331,29 @@ def build_cards(topics_data: list, section: str) -> tuple[str, int]:
             why      = html.escape(r.get("why_learn_this", ""))
 
             icon       = TYPE_ICONS.get(rtype, "📄")
-            time_badge = f'<span class="time-est">⏱ {time_est}</span>' if time_est else ""
+            time_cell  = f'<td style="padding:0;padding-left:6px;font-size:.75rem;color:#bbb;white-space:nowrap;">⏱ {time_est}</td>' if time_est else ""
 
             items_html += f"""
-            <div class="resource">
-              <div class="resource-meta">
-                <span class="badge type-{rtype}">{icon} {rtype.capitalize()}</span>
-                <span class="badge diff-{difficulty}">{difficulty.capitalize()}</span>
-                {time_badge}
+            <div class="resource" style="padding:.8rem 0;border-top:1px solid #f0f0f0;">
+              <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:.45rem;">
+                <tr>
+                  <td style="padding:3px 7px;border-radius:4px;font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;{_BADGE_TYPE[rtype]}">{icon} {rtype.capitalize()}</td>
+                  <td style="padding:0;width:5px;"></td>
+                  <td style="padding:3px 7px;border-radius:4px;font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;{_BADGE_DIFF[difficulty]}">{difficulty.capitalize()}</td>
+                  {time_cell}
+                </tr>
+              </table>
+              <div class="resource-text" style="margin-bottom:.3rem;">
+                <a href="{url}" target="_blank" rel="noopener noreferrer" style="color:#1a73e8;text-decoration:none;font-size:.93rem;font-weight:500;line-height:1.5;">{text}</a>
               </div>
-              <div class="resource-text">
-                <a href="{url}" target="_blank" rel="noopener noreferrer">{text}</a>
-              </div>
-              <div class="resource-why">{why}</div>
+              <div class="resource-why" style="font-size:.8rem;color:#777;font-style:italic;line-height:1.45;">{why}</div>
             </div>"""
 
         cards += f"""
-        <div class="card" style="border-left:4px solid {color}">
-          <div class="card-header">
-            <h3 style="color:{color}">{html.escape(name)}</h3>
-            <span class="resource-count">{len(resources)} resource{"s" if len(resources) != 1 else ""}</span>
+        <div class="card" style="background:#fff;border-radius:8px;padding:1.4rem 1.6rem;margin-bottom:1rem;border-left:4px solid {color};">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.9rem;">
+            <h3 style="font-size:1rem;font-weight:700;color:{color};margin:0;">{html.escape(name)}</h3>
+            <span class="resource-count" style="font-size:.75rem;color:#aaa;">{len(resources)} resource{"s" if len(resources) != 1 else ""}</span>
           </div>
           {items_html}
         </div>"""
@@ -362,14 +375,17 @@ def generate_html(summary: dict, date_str: str) -> str:
         m = SECTION_META[section_key]
         if not cards:
             return ""
+        sec_bg = {"developer": "background:#eff6ff;border:1px solid #bfdbfe;margin-top:.5rem;",
+                  "architect":  "background:#fffbeb;border:1px solid #fde68a;margin-top:2rem;"}
+        label_color = {"developer": "#1d4ed8", "architect": "#b45309"}
         return f"""
-    <div class="section-header section-{section_key}">
-      <div class="section-icon">{m["icon"]}</div>
+    <div class="section-header section-{section_key}" style="display:flex;align-items:center;gap:1rem;border-radius:10px;padding:1rem 1.4rem;margin-bottom:1rem;{sec_bg[section_key]}">
+      <div class="section-icon" style="font-size:1.6rem;line-height:1;flex-shrink:0;">{m["icon"]}</div>
       <div>
-        <div class="section-label">{m["label"]}</div>
-        <div class="section-desc">{m["description"]}</div>
+        <div class="section-label" style="font-size:1rem;font-weight:700;color:{label_color[section_key]};">{m["label"]}</div>
+        <div class="section-desc" style="font-size:.8rem;color:#666;margin-top:.15rem;">{m["description"]}</div>
       </div>
-      <span class="section-count">{count} resources</span>
+      <span class="section-count" style="margin-left:auto;font-size:.75rem;color:#999;white-space:nowrap;flex-shrink:0;">{count} resources</span>
     </div>
     {cards}"""
 

@@ -117,6 +117,17 @@ Self-service subscribe/unsubscribe flow backed by Resend Audiences:
 
 All three are emitted as CloudFormation Outputs and printed in the deploy summary.
 
+## Analytics
+
+Open rates and click tracking are handled by **Resend's built-in broadcast analytics** — no custom code required.
+
+When a broadcast is sent via the Resend Broadcasts API, Resend automatically:
+- Injects a tracking pixel for open tracking
+- Wraps all links for click tracking
+- Aggregates per-broadcast stats (opens, clicks, unsubscribes)
+
+View stats in the [Resend dashboard](https://resend.com/broadcasts) after each send. No additional instrumentation needed in `agent.py` or `template.yaml`.
+
 ## Scheduler
 
 `setup.bat` registers a Windows Task Scheduler job (`AI-News-Agent-Weekly`) by invoking `setup_scheduler.ps1` (PowerShell). The job runs `run_agent.bat` on Tuesdays and Fridays at 03:00 UTC and is configured to run on next startup if the machine was off at trigger time.

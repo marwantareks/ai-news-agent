@@ -168,6 +168,22 @@ A fallback **unsubscribe page** is also hosted on S3 (`/unsubscribe.html`). User
 
 ---
 
+## Analytics
+
+Open rates and click tracking are handled automatically by **Resend's built-in broadcast analytics** — no extra code or infrastructure needed.
+
+| Metric | How it works |
+|---|---|
+| **Opens** | Resend injects a tracking pixel into each broadcast. |
+| **Clicks** | Resend wraps all links with redirect URLs and records each click. |
+| **Unsubscribes** | Tracked natively via the signed unsubscribe link in each email footer. |
+
+View stats in the [Resend dashboard](https://resend.com/broadcasts) → select a broadcast → **Analytics** tab.
+
+> For per-link click data (e.g. which article was clicked most), add UTM parameters to outbound URLs in `build_cards()`. Destination sites that use Google Analytics will report on them.
+
+---
+
 ## Prerequisites
 
 | Requirement | Notes |
