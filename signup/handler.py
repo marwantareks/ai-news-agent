@@ -1,11 +1,12 @@
 import json
 import os
+import re
 import urllib.request
 import urllib.error
 
 RESEND_API_KEY     = os.environ.get("RESEND_API_KEY", "")
 RESEND_AUDIENCE_ID = os.environ.get("RESEND_AUDIENCE_ID", "")
-ALLOWED_ORIGIN     = os.environ.get("SIGNUP_ALLOWED_ORIGIN", "*")
+ALLOWED_ORIGIN     = os.environ.get("SIGNUP_ALLOWED_ORIGIN", "")
 
 
 def _call_resend(email, unsubscribed, headers):
@@ -53,7 +54,7 @@ def _handle_subscribe(event, headers):
         return {"statusCode": 400, "headers": headers,
                 "body": json.dumps({"error": "Invalid request body"})}
 
-    if not email or "@" not in email:
+    if not email or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', email):
         return {"statusCode": 400, "headers": headers,
                 "body": json.dumps({"error": "Invalid email address"})}
 
@@ -76,7 +77,7 @@ def _handle_unsubscribe(event, headers):
         return {"statusCode": 400, "headers": headers,
                 "body": json.dumps({"error": "Invalid request body"})}
 
-    if not email or "@" not in email:
+    if not email or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', email):
         return {"statusCode": 400, "headers": headers,
                 "body": json.dumps({"error": "Invalid email address"})}
 

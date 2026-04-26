@@ -38,9 +38,9 @@ Ordered by: high exploited AWS cost first, then low effort, then low solution co
 | Plan Fix | Findings Covered | Severity | Effort | AWS Cost if Exploited | Solution AWS Cost | Status |
 |----------|-----------------|----------|--------|-----------------------|-------------------|--------|
 | Fix 1 | #1, #5 — Rate limiting + CORS bypass | Critical + High | Low | High | None | Complete |
-| Fix 2 | #8 — CORS default `"*"` | Medium | Low | None | None | Pending |
-| Fix 3 | #6 — Weak email validation | High | Low | Low | None | Pending |
-| Fix 4 | #10 — No timeout on Resend call | Medium | Low | Medium | None (reduces cost) | Pending |
+| Fix 2 | #8 — CORS default `"*"` | Medium | Low | None | None | Complete |
+| Fix 3 | #6 — Weak email validation | High | Low | Low | None | Complete |
+| Fix 4 | #10 — No timeout on Resend call | Medium | Low | Medium | None (reduces cost) | Complete |
 | Fix 5 | #2 — No double opt-in | Critical | Medium | Medium | Negligible | Pending |
 | Fix 6 | #3 — Prompt injection | Critical | Medium | Low | None | Pending |
 | Fix 7 | #9 — No CSP in generated HTML | Medium | Low | None | None | Pending |

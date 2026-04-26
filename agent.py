@@ -570,15 +570,20 @@ def send_email(html_content: str, date_str: str) -> None:
 
     resend.api_key = RESEND_API_KEY
     try:
-        resend.Broadcasts.create({
-            "name":       f"AI Learning Digest · {date_str}",
-            "segment_id": RESEND_AUDIENCE_ID,
-            "from":       EMAIL_FROM,
-            "subject":    f"AI Learning Digest · {date_str}",
-            "html":       html_content,
-            "send":       True,
-        })
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(resend.Broadcasts.create, {
+                "name":       f"AI Learning Digest · {date_str}",
+                "segment_id": RESEND_AUDIENCE_ID,
+                "from":       EMAIL_FROM,
+                "subject":    f"AI Learning Digest · {date_str}",
+                "html":       html_content,
+                "send":       True,
+            })
+            future.result(timeout=30)
         log.info("Broadcast sent via Resend audience %s", RESEND_AUDIENCE_ID)
+    except FuturesTimeoutError:
+        log.warning("Resend broadcast timed out after 30 seconds — skipping")
     except Exception as e:
         log.error("Resend broadcast failed: %s", e)
 
