@@ -155,10 +155,10 @@ Windows Task Scheduler                EventBridge cron(0 3 ? * TUE,FRI *)
 A public self-service signup page lets anyone subscribe to the digest without manual audience management.
 
 - **Signup page** — static HTML hosted on S3: `http://ai-news-agent-signup-<AccountId>.s3-website-<region>.amazonaws.com`
-- **API endpoint** — `POST /subscribe` with `{"email": "..."}` adds the contact to your Resend Audience. Returns 200 for both new and already-subscribed contacts.
+- **API endpoint** — `POST /subscribe` with `{"email": "..."}` sends a confirmation email with a signed link (valid 24 hours). The contact is only added to the Resend Audience after the subscriber clicks **Confirm my subscription** in that email (`GET /confirm`).
 - Deployed automatically as part of `deploy.bat` — the live API URL is injected into `signup/subscribe.html` before upload.
 
-Once someone subscribes they receive every future broadcast automatically, since `send_email()` broadcasts to the entire audience.
+Once someone confirms their subscription they receive every future broadcast automatically, since `send_email()` broadcasts to the entire audience.
 
 ### Unsubscribe
 

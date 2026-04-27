@@ -225,9 +225,7 @@
         .then(function (r) {
           if (r.ok) {
             showStatus(
-              r.data.message === "Already subscribed"
-                ? "You are already subscribed — check your inbox!"
-                : "You're subscribed! Your first digest arrives on the next send day.",
+              "Check your email to confirm your subscription.",
               "success"
             );
             emailEl.value    = "";

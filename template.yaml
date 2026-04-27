@@ -139,6 +139,16 @@ Resources:
           Properties:
             Path: /unsubscribe
             Method: OPTIONS
+        ConfirmGet:
+          Type: HttpApi
+          Properties:
+            Path: /confirm
+            Method: GET
+        ConfirmOptions:
+          Type: HttpApi
+          Properties:
+            Path: /confirm
+            Method: OPTIONS
 
   # ── S3 bucket for signup page ────────────────────────────────────────────────
   SignupBucket:

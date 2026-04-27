@@ -208,8 +208,10 @@ A public signup page lets anyone subscribe to the digest without any manual step
 
 When someone submits their email:
 1. The page calls `POST /subscribe` on the API Gateway endpoint.
-2. The backend Lambda adds the contact to your Resend Audience.
-3. The next broadcast automatically includes them.
+2. The backend Lambda sends a confirmation email to that address with a signed link (valid for 24 hours).
+3. The subscriber clicks **Confirm my subscription** in the email.
+4. The Lambda verifies the link, adds the contact to your Resend Audience, and shows a confirmation page.
+5. The next broadcast automatically includes them.
 
 **Managing subscribers:** Resend dashboard → Audiences → your audience. You can view, add, or remove contacts here.
 

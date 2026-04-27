@@ -41,7 +41,7 @@ Ordered by: high exploited AWS cost first, then low effort, then low solution co
 | Fix 2 | #8 — CORS default `"*"` | Medium | Low | None | None | Complete |
 | Fix 3 | #6 — Weak email validation | High | Low | Low | None | Complete |
 | Fix 4 | #10 — No timeout on Resend call | Medium | Low | Medium | None (reduces cost) | Complete |
-| Fix 5 | #2 — No double opt-in | Critical | Medium | Medium | Negligible | Pending |
+| Fix 5 | #2 — No double opt-in | Critical | Medium | Medium | Negligible | Complete |
 | Fix 6 | #3 — Prompt injection | Critical | Medium | Low | None | Pending |
 | Fix 7 | #9 — No CSP in generated HTML | Medium | Low | None | None | Pending |
 | Fix 8 | #12 — Unbounded log file | Low | Low | None | None | Pending |

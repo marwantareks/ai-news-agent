@@ -367,7 +367,7 @@ Costs assume daily operation in AWS mode with default settings.
 
 A second Lambda + HTTP API + S3 static site provides self-service newsletter signup and unsubscribe.
 
-### Subscribe flow
+### Subscribe flow (double opt-in)
 
 ```
 Visitor → signup/subscribe.html (S3 website)
@@ -377,6 +377,13 @@ Visitor → signup/subscribe.html (S3 website)
               │
               ▼
          SignupFunction → _handle_subscribe()
+              │  POST https://api.resend.com/emails  (confirmation email with signed link)
+              ▼
+         Visitor inbox  →  clicks "Confirm my subscription" link
+              │  GET /confirm?email=...&ts=...&sig=...
+              ▼
+         SignupFunction → _handle_confirm()
+              │  verifies HMAC-SHA256 token + 24-hour expiry
               │  POST https://api.resend.com/contacts  {unsubscribed: false}
               ▼
          Resend Audience  ←  future broadcasts go to all contacts here
@@ -408,10 +415,13 @@ Visitor → signup/unsubscribe.html (S3 website, ?email= pre-fill)
 | Aspect | Detail |
 |---|---|
 | **Lambda** | `ai-news-agent-signup`, 10s timeout, 128 MB, Python 3.12, stdlib only — no pip deps |
-| **API routes** | `POST /subscribe`, `OPTIONS /subscribe`, `POST /unsubscribe`, `OPTIONS /unsubscribe` — all handled by the same function |
-| **Route dispatch** | `handler()` inspects `event["rawPath"]` — paths ending in `/unsubscribe` go to `_handle_unsubscribe()`, all others to `_handle_subscribe()` |
+| **API routes** | `POST /subscribe`, `OPTIONS /subscribe`, `GET /confirm`, `OPTIONS /confirm`, `POST /unsubscribe`, `OPTIONS /unsubscribe` — all handled by the same function |
+| **Route dispatch** | `handler()` inspects `event["rawPath"]` — `/confirm` → `_handle_confirm()`, `/unsubscribe` → `_handle_unsubscribe()`, all others → `_handle_subscribe()` |
+| **Double opt-in token** | `_make_token(email)` generates `(ts, sig)` where `sig = HMAC-SHA256(key=RESEND_API_KEY, msg="{email}:{ts}")`. `_verify_token()` checks the signature and rejects tokens older than 24 hours. |
+| **Confirmation email** | Sent via `POST https://api.resend.com/emails` (transactional, not broadcast). Contains a signed `GET /confirm?email=...&ts=...&sig=...` link. |
+| **Confirm response** | `GET /confirm` returns an HTML page (not JSON) — success page on valid token, error page with link back to signup on invalid/expired token. |
 | **CORS** | `Access-Control-Allow-Origin` is set to the S3 website URL via `SIGNUP_ALLOWED_ORIGIN` env var, injected by `template.yaml` — not set in `.env` |
-| **Resend call** | Both routes call `_call_resend(email, unsubscribed, headers)` — same endpoint (`POST /contacts`), only `unsubscribed` differs |
+| **Resend contact call** | `_call_resend(email, unsubscribed, headers)` — called only after token verification for subscribe; called directly for unsubscribe |
 | **Responses** | 200 for success; 400 for invalid input or Resend 422; 502 for auth errors or upstream failures |
 | **Static pages** | `subscribe.html` contains `SIGNUP_API_URL`; `unsubscribe.html` contains `UNSUBSCRIBE_API_URL`. Both are replaced by `deploy.bat` before upload. |
 | **Public access** | `SignupBucket` has public read via a bucket policy — it is a static website, not a private store |
