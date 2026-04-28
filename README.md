@@ -10,7 +10,7 @@ A lightweight twice-weekly agent that curates the best articles and YouTube vide
 |---|---|---|
 | [Architecture Guide](Documentation/ARCHITECTURE.md) | Developers & Architects | Full pipeline, tech stack, data schemas, AWS infrastructure, environment variables, cost estimates |
 | [User Guide](Documentation/USER_GUIDE.md) | End Users | What env vars do, step-by-step AWS Console instructions, how to test, how to monitor, troubleshooting |
-
+| [Diagrams](Diagrams) | Architects | Application architecture diagrams |
 ---
 
 ## Objective
