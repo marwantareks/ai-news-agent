@@ -306,11 +306,29 @@ SECTION_META = {
 }
 
 
+_BLOCKED_DOMAINS = {
+    "google.com", "www.google.com",
+    "bing.com", "www.bing.com",
+    "duckduckgo.com", "www.duckduckgo.com",
+}
+_REDIRECTOR_PATHS = ("/url", "/search", "/redir", "/redirect")
+_IPV4_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+
+
 def _safe_url(url: str) -> str:
-    """Return url if http/https, else '#'. Escapes for use in an HTML attribute."""
+    """Return url if http/https with a real domain and no open redirector, else '#'."""
     from urllib.parse import urlparse
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
+        return "#"
+    hostname = parsed.hostname  # lowercase, no port, no brackets
+    if not hostname:
+        return "#"
+    # Reject raw IP addresses — IPv4 via regex, IPv6 by colon presence
+    if _IPV4_RE.match(hostname) or ":" in hostname:
+        return "#"
+    # Reject open-redirector paths on known search engine domains
+    if hostname in _BLOCKED_DOMAINS and parsed.path.startswith(_REDIRECTOR_PATHS):
         return "#"
     return html.escape(url, quote=True)
 

@@ -250,7 +250,11 @@ Valid values:
 - Viewport meta tag for mobile rendering
 - All links open in `target="_blank" rel="noopener noreferrer"`
 - All external-sourced values (from Claude JSON and Tavily results) are HTML-escaped via `html.escape()` before insertion to prevent XSS
-- URLs are validated to `http`/`https` scheme only — `javascript:` and other schemes are replaced with `#`
+- URLs are validated by `_safe_url()` — any URL failing the following checks is replaced with `#`:
+  - Scheme must be `http` or `https` (`javascript:` and other schemes rejected)
+  - `hostname` must be non-empty (rejects malformed URLs with no domain)
+  - `hostname` must not be a raw IPv4 address (matched by `_IPV4_RE`) or IPv6 address (detected by `:` in hostname — domain names never contain colons)
+  - If the hostname is a known search-engine domain (`google.com`, `bing.com`, `duckduckgo.com`) the path must not start with a known redirector pattern (`/url`, `/search`, `/redir`, `/redirect`)
 - `type` and `difficulty` values are allowlisted to known CSS class names before use as badge class names
 - **Prompt injection mitigation:** Tavily result `title` and `content` fields are sanitised by `_sanitize_external_text()` before being interpolated into the Claude prompt. The regex strips `###` headers, HTML/XML tags, and lines beginning with role markers (`SYSTEM:`, `ASSISTANT:`, `USER:`, `Instructions:`, `Ignore previous`). The prompt also includes an explicit untrusted-content notice instructing Claude to ignore any embedded instructions in the search results.
 
