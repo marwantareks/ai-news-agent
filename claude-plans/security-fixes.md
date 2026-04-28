@@ -47,7 +47,7 @@ Ordered by: high exploited AWS cost first, then low effort, then low solution co
 | Fix 6 | #3 — Prompt injection | Critical | Medium | Low | None | Complete |
 | Fix 7 | #9 — No CSP in generated HTML | Medium | Low | None | None | Pending |
 | Fix 8 | #12 — Unbounded log file | Low | Low | None | None | Complete |
-| Fix 9 | #14 — Reports bucket public access block | Low | Low | Low | None | Pending |
+| Fix 9 | #14 — Reports bucket public access block | Low | Low | Low | None | Complete |
 | Fix 10 | #4 — HTTP-only signup page | High | Medium | Low | Low | Pending |
 | Fix 11 | #7 — API keys in Lambda env vars | Medium | Medium | Critical if leaked | Low (~$1–2/mo) | Pending |
 | Fix 12 | #11 — URL injection past scheme check | Medium | Medium | None | None | Pending |

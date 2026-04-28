@@ -150,7 +150,7 @@ All resources are defined in `template.yaml` and deployed via SAM.
 |---|---|---|
 | `AgentFunction` | `AWS::Serverless::Function` | Name: `ai-news-agent`, handler: `agent.lambda_handler`, runtime: `python3.12`, memory: 256 MB, timeout: 300s |
 | `WeeklySchedule` | EventBridge Schedule (SAM `Events`) | `cron(0 3 ? * TUE,FRI *)` — fires Tuesdays and Fridays at 03:00 UTC |
-| `ReportsBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-reports-<AccountId>`, lifecycle: delete objects after 90 days |
+| `ReportsBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-reports-<AccountId>`, lifecycle: delete objects after 90 days, public access explicitly blocked (all four `PublicAccessBlockConfiguration` flags set to `true`) |
 | `AgentExecutionRole` | `AWS::IAM::Role` | Name: `ai-news-agent-lambda-role` |
 | `SignupFunction` | `AWS::Serverless::Function` | Name: `ai-news-agent-signup`, handler: `signup/handler.handler`, runtime: `python3.12`, memory: 128 MB, timeout: 10s. stdlib only — no pip deps. Handles both subscribe and unsubscribe routes. |
 | `ServerlessHttpApi` | HTTP API (auto-created by SAM) | Exposes `POST /subscribe`, `OPTIONS /subscribe`, `POST /unsubscribe`, `OPTIONS /unsubscribe`. Throttled: 10 req/s rate limit, burst 20 (configured via `Globals.HttpApi.DefaultRouteSettings`). |
