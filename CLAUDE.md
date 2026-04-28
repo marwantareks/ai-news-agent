@@ -72,7 +72,7 @@ Optional (email delivery — local and AWS):
 
 Optional (AWS mode):
 - `S3_BUCKET` — when set, switches to AWS mode: reports go to S3, no local file log. Set automatically by `template.yaml` in Lambda — do not add to `.env`.
-- `SIGNUP_PAGE_URL` — URL of the S3-hosted signup page; embedded in the broadcast footer as an invite link. Set automatically by `template.yaml` — do not add to `.env`.
+- `SIGNUP_PAGE_URL` — CloudFront HTTPS URL of the signup page; embedded in the broadcast footer as an invite link and used as the back-link in confirm error pages. Set automatically by `template.yaml` — do not add to `.env`.
 
 ## Model
 
@@ -80,7 +80,7 @@ The curate stage uses **`claude-haiku-4-5-20251001`** (hardcoded in `summarize_s
 
 ## Logging
 
-In local mode: logs go to both stdout and `agent.log` (appended, UTF-8). In AWS mode: stdout only — CloudWatch captures it automatically (`force=True` in `logging.basicConfig` overrides Lambda's pre-configured root logger). Check `agent.log` (local) or CloudWatch log group `/aws/lambda/ai-news-agent` (AWS) after a run.
+In local mode: logs go to both stdout and `agent.log` (rotating: 5 MB per file, 3 backups, ~15 MB total cap). In AWS mode: stdout only — CloudWatch captures it automatically (`force=True` in `logging.basicConfig` overrides Lambda's pre-configured root logger). Check `agent.log` (local) or CloudWatch log group `/aws/lambda/ai-news-agent` (AWS) after a run.
 
 ## AWS Deployment
 
@@ -88,7 +88,7 @@ In local mode: logs go to both stdout and `agent.log` (appended, UTF-8). In AWS 
 deploy.bat [stack-name] [region]
 ```
 
-Defaults to stack `ai-news-agent` in `us-east-1`. Auto-loads `.env` at startup, then runs `sam build && sam deploy --capabilities CAPABILITY_NAMED_IAM --resolve-s3`. Passes `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `EMAIL_FROM`, `RESEND_API_KEY`, and `RESEND_AUDIENCE_ID` as SAM parameter overrides. After deploy, automatically injects `SignupApiUrl` into `signup/subscribe.html` and `UnsubscribeApiUrl` into `signup/unsubscribe.html`, then uploads both to the `SignupBucket` S3 website. Requires AWS SAM CLI and configured AWS credentials (`aws configure`).
+Defaults to stack `ai-news-agent` in `us-east-1`. Auto-loads `.env` at startup, then runs `sam build && sam deploy --capabilities CAPABILITY_NAMED_IAM --resolve-s3`. Passes `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `EMAIL_FROM`, `RESEND_API_KEY`, and `RESEND_AUDIENCE_ID` as SAM parameter overrides. After deploy, automatically injects `SignupApiUrl` into `signup/subscribe.html` and `UnsubscribeApiUrl` into `signup/unsubscribe.html`, then uploads both to `SignupBucket`. Requires AWS SAM CLI and configured AWS credentials (`aws configure`).
 
 **Important:** Run `deploy.bat` from an existing cmd window (`cd C:\MyProjects\ai-news-agent && deploy.bat`), not by double-clicking. SAM CLI calls `exit` (not `exit /b`) internally — `deploy.bat` wraps both `sam build` and `sam deploy` with `cmd /c` to prevent this from killing the parent shell.
 
@@ -109,7 +109,7 @@ Self-service subscribe/unsubscribe flow backed by Resend Audiences:
   - `/unsubscribe` (POST) → `_handle_unsubscribe()`: marks the contact `unsubscribed=True` via Resend Contacts API.
   - all other paths (POST) → `_handle_subscribe()`: validates email, generates a signed token, sends a confirmation email via Resend, and returns 200 without yet adding the contact.
 
-  Shared helper `_call_resend(email, unsubscribed, headers)` makes the Resend Contacts API call. Returns 200 on success; 400 for invalid input; 502 on upstream errors. CORS origin is restricted to the S3 website via `SIGNUP_ALLOWED_ORIGIN` env var, which `template.yaml` sets automatically — do not add it to `.env`.
+  Shared helper `_call_resend(email, unsubscribed, headers)` makes the Resend Contacts API call. Returns 200 on success; 400 for invalid input; 502 on upstream errors. CORS origin is restricted to the CloudFront distribution via `SIGNUP_ALLOWED_ORIGIN` env var, which `template.yaml` sets automatically — do not add it to `.env`.
 
 - **`signup/subscribe.html`** — Static HTML signup page (no framework, no CDN). Contains a `SIGNUP_API_URL` placeholder that `deploy.bat` replaces with the live API Gateway URL at deploy time before uploading to S3.
 
@@ -119,7 +119,7 @@ Self-service subscribe/unsubscribe flow backed by Resend Audiences:
 
 - **SignupApiUrl** — `https://<id>.execute-api.<region>.amazonaws.com/subscribe`
 - **UnsubscribeApiUrl** — `https://<id>.execute-api.<region>.amazonaws.com/unsubscribe`
-- **SignupPageUrl** — `http://ai-news-agent-signup-<AccountId>.s3-website-<region>.amazonaws.com`
+- **SignupPageCloudFrontUrl** — `https://<id>.cloudfront.net` (HTTPS via CloudFront; `SignupBucket` blocks all direct public access)
 
 All three are emitted as CloudFormation Outputs and printed in the deploy summary.
 
@@ -143,8 +143,9 @@ View stats in the [Resend dashboard](https://resend.com/broadcasts) after each s
 ### XSS prevention (`agent.py`)
 All external-sourced values (from Claude JSON and Tavily) are escaped before HTML insertion:
 - `html.escape()` applied to `text`, `time_estimate`, `why_learn_this`, `name`, `cotd_title`, `cotd_explanation`
-- `_safe_url()` validates URL scheme — only `http`/`https` pass through; others become `#`
+- `_safe_url()` validates URLs before use as `href` attributes — returns `#` if: scheme is not `http`/`https`; hostname is empty; hostname is a raw IPv4 or IPv6 address; hostname is a known search engine domain (`google.com`, `bing.com`, `duckduckgo.com`) with a redirector path (`/url`, `/search`, `/redir`, `/redirect`)
 - `rtype` and `difficulty` are allowlisted to known values before use as CSS class names
+- `_sanitize_external_text()` strips prompt-injection markers (`###`, role prefixes, HTML tags) from Tavily `title` and `content` fields before they are interpolated into the Claude prompt
 
 ### Double opt-in tokens (`signup/handler.py`)
 Confirmation links are signed with HMAC-SHA256 using `RESEND_API_KEY` as the secret (`_make_token` / `_verify_token`). Tokens expire after 24 hours. Verification uses `hmac.compare_digest` to prevent timing attacks. The token is `ts` (Unix timestamp) + `sig` (hex digest of `email:ts`), passed as query parameters on the `/confirm` URL.
