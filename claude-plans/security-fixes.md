@@ -3,7 +3,9 @@
 Ordered by priority derived from: **Effort to Fix** (lower = sooner), **AWS Cost Impact if Exploited** (higher = sooner), and **Solution's AWS Cost Impact** (lower = sooner).
 
 Each fix is standalone. When this plan is executed, implement only the fix being requested — do not implement other fixes unless explicitly asked. After implementing each fix, ask the user to confirm the fix is complete before marking it done.
-
+---
+## General instructions for all fixes
+1. **Ask the user to confirm** the change looks correct. don't mark the fix as complete till the user confirms it is ok.
 ---
 
 ## Security Review Summary
@@ -42,9 +44,9 @@ Ordered by: high exploited AWS cost first, then low effort, then low solution co
 | Fix 3 | #6 — Weak email validation | High | Low | Low | None | Complete |
 | Fix 4 | #10 — No timeout on Resend call | Medium | Low | Medium | None (reduces cost) | Complete |
 | Fix 5 | #2 — No double opt-in | Critical | Medium | Medium | Negligible | Complete |
-| Fix 6 | #3 — Prompt injection | Critical | Medium | Low | None | Pending |
+| Fix 6 | #3 — Prompt injection | Critical | Medium | Low | None | Complete |
 | Fix 7 | #9 — No CSP in generated HTML | Medium | Low | None | None | Pending |
-| Fix 8 | #12 — Unbounded log file | Low | Low | None | None | Pending |
+| Fix 8 | #12 — Unbounded log file | Low | Low | None | None | Complete |
 | Fix 9 | #14 — Reports bucket public access block | Low | Low | Low | None | Pending |
 | Fix 10 | #4 — HTTP-only signup page | High | Medium | Low | Low | Pending |
 | Fix 11 | #7 — API keys in Lambda env vars | Medium | Medium | Critical if leaked | Low (~$1–2/mo) | Pending |
@@ -217,7 +219,7 @@ The generated HTML report has no Content-Security-Policy. While all values are c
 2. **Edit** the logging setup to replace `logging.FileHandler` with `logging.handlers.RotatingFileHandler`. Add `from logging import handlers` (or `import logging.handlers`) at the top of the file. Configure:
    - `maxBytes=5 * 1024 * 1024` (5 MB per file)
    - `backupCount=3` (keep 3 rotated files, ~15 MB total)
-3. **Ask the user to confirm** the change looks correct.
+3. **Ask the user to confirm** the change looks correct. don't update fix to complete till the user confirms it is ok
 4. **Documentation updates:**
    - **`Documentation/ARCHITECTURE.md`** — update the Logging row in the Tech Stack table (Section 2) and the CloudWatch vs file logging section (Section 12) to note rotating file handler with 5 MB / 3 backup limit.
    - **`README.md`** — update the `agent.log` line in the Project Structure section to note rotation.

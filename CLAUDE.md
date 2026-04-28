@@ -72,6 +72,7 @@ Optional (email delivery — local and AWS):
 
 Optional (AWS mode):
 - `S3_BUCKET` — when set, switches to AWS mode: reports go to S3, no local file log. Set automatically by `template.yaml` in Lambda — do not add to `.env`.
+- `SIGNUP_PAGE_URL` — URL of the S3-hosted signup page; embedded in the broadcast footer as an invite link. Set automatically by `template.yaml` — do not add to `.env`.
 
 ## Model
 
@@ -103,7 +104,12 @@ A second Lambda (`ai-news-agent-signup`, 10s timeout, 128MB) handles self-servic
 
 Self-service subscribe/unsubscribe flow backed by Resend Audiences:
 
-- **`signup/handler.py`** — Lambda handler (stdlib only, no extra deps). Dispatches on `event["rawPath"]`: paths ending in `/unsubscribe` go to `_handle_unsubscribe()`; all others go to `_handle_subscribe()`. Shared helper `_call_resend(email, unsubscribed, headers)` makes the Resend Contacts API call. Returns 200 on success; 400 for invalid input; 502 on upstream errors. CORS origin is restricted to the S3 website via `SIGNUP_ALLOWED_ORIGIN` env var, which `template.yaml` sets automatically — do not add it to `.env`.
+- **`signup/handler.py`** — Lambda handler (stdlib only, no extra deps). Implements a **double opt-in** flow. Dispatches on `event["rawPath"]`:
+  - `/confirm` (GET) → `_handle_confirm()`: verifies HMAC token from query params, then calls `_call_resend()` to activate the contact.
+  - `/unsubscribe` (POST) → `_handle_unsubscribe()`: marks the contact `unsubscribed=True` via Resend Contacts API.
+  - all other paths (POST) → `_handle_subscribe()`: validates email, generates a signed token, sends a confirmation email via Resend, and returns 200 without yet adding the contact.
+
+  Shared helper `_call_resend(email, unsubscribed, headers)` makes the Resend Contacts API call. Returns 200 on success; 400 for invalid input; 502 on upstream errors. CORS origin is restricted to the S3 website via `SIGNUP_ALLOWED_ORIGIN` env var, which `template.yaml` sets automatically — do not add it to `.env`.
 
 - **`signup/subscribe.html`** — Static HTML signup page (no framework, no CDN). Contains a `SIGNUP_API_URL` placeholder that `deploy.bat` replaces with the live API Gateway URL at deploy time before uploading to S3.
 
@@ -139,6 +145,9 @@ All external-sourced values (from Claude JSON and Tavily) are escaped before HTM
 - `html.escape()` applied to `text`, `time_estimate`, `why_learn_this`, `name`, `cotd_title`, `cotd_explanation`
 - `_safe_url()` validates URL scheme — only `http`/`https` pass through; others become `#`
 - `rtype` and `difficulty` are allowlisted to known values before use as CSS class names
+
+### Double opt-in tokens (`signup/handler.py`)
+Confirmation links are signed with HMAC-SHA256 using `RESEND_API_KEY` as the secret (`_make_token` / `_verify_token`). Tokens expire after 24 hours. Verification uses `hmac.compare_digest` to prevent timing attacks. The token is `ts` (Unix timestamp) + `sig` (hex digest of `email:ts`), passed as query parameters on the `/confirm` URL.
 
 ### Resend API key (`template.yaml`)
 `RESEND_API_KEY` is passed as a Lambda env var via the `ResendApiKey` SAM parameter (marked `NoEcho`). Email uses the Resend HTTP API in both local and AWS modes — no SES IAM permissions required.

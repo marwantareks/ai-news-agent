@@ -290,7 +290,7 @@ ai-news-agent/
 ├── setup_scheduler.ps1    # Registers the Windows Task Scheduler job
 ├── CLAUDE.md              # Architecture guide for Claude Code
 ├── .env                   # API keys and email config (not committed to git)
-├── agent.log              # Append-only run log — local mode only
+├── agent.log              # Rotating run log — local mode only (5 MB × 3 files)
 ├── signup/
 │   ├── handler.py         # Lambda handler for POST /subscribe and POST /unsubscribe (stdlib only, no pip deps)
 │   ├── subscribe.html     # Static signup page (SIGNUP_API_URL placeholder replaced at deploy)

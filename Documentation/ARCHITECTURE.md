@@ -20,7 +20,7 @@ The AI Learning Digest Agent is a Python application that runs on a schedule to 
 | Scheduler (AWS) | Amazon EventBridge | `cron(0 3 ? * TUE,FRI *)` |
 | Report Storage (local) | Local filesystem | `reports/YYYY-MM-DD-ai-learning.html` |
 | Report Storage (AWS) | Amazon S3 | Bucket: `ai-news-agent-reports-<AccountId>` |
-| Logging (local) | Python `logging` | stdout + `agent.log` |
+| Logging (local) | Python `logging` | stdout + `agent.log` (rotating: 5 MB × 3 files) |
 | Logging (AWS) | Amazon CloudWatch Logs | `/aws/lambda/ai-news-agent` (stdout capture) |
 | Config | `python-dotenv` | `.env` file in project root |
 
@@ -135,8 +135,8 @@ ai-news-agent/
 | **Report storage** | `reports/YYYY-MM-DD-ai-learning.html` | `s3://<bucket>/YYYY-MM-DD-ai-learning.html` |
 | **Email function** | `send_email()` — Resend Broadcast to `RESEND_AUDIENCE_ID` | `send_email()` — same function, same Resend Broadcast path |
 | **Email auth** | `RESEND_API_KEY` + `RESEND_AUDIENCE_ID` env vars | Same, injected as Lambda env vars via SAM parameters |
-| **Logging** | stdout + `agent.log` (FileHandler appended) | stdout only (CloudWatch captures automatically) |
-| **FileHandler** | Added when `S3_BUCKET` is empty | Skipped (Lambda's read-only FS — FileHandler would fail) |
+| **Logging** | stdout + `agent.log` (RotatingFileHandler: 5 MB max, 3 backups, ~15 MB total) | stdout only (CloudWatch captures automatically) |
+| **FileHandler** | `RotatingFileHandler` added when `S3_BUCKET` is empty | Skipped (Lambda's read-only FS — FileHandler would fail) |
 | **Dependencies** | All in local `venv/` | Packaged by `sam build` into Lambda deployment ZIP |
 | **Infrastructure** | Developer's Windows machine | Lambda 256 MB, 300s timeout, Python 3.12 |
 
@@ -250,6 +250,7 @@ Valid values:
 - All external-sourced values (from Claude JSON and Tavily results) are HTML-escaped via `html.escape()` before insertion to prevent XSS
 - URLs are validated to `http`/`https` scheme only — `javascript:` and other schemes are replaced with `#`
 - `type` and `difficulty` values are allowlisted to known CSS class names before use as badge class names
+- **Prompt injection mitigation:** Tavily result `title` and `content` fields are sanitised by `_sanitize_external_text()` before being interpolated into the Claude prompt. The regex strips `###` headers, HTML/XML tags, and lines beginning with role markers (`SYSTEM:`, `ASSISTANT:`, `USER:`, `Instructions:`, `Ignore previous`). The prompt also includes an explicit untrusted-content notice instructing Claude to ignore any embedded instructions in the search results.
 
 ---
 
@@ -341,7 +342,7 @@ To force a re-run: delete today's report from `reports/` (local) or from S3 (AWS
 
 ### CloudWatch vs file logging
 
-- **Local mode:** `logging.basicConfig()` adds both a `StreamHandler` (stdout) and a `FileHandler` for `agent.log`.
+- **Local mode:** `logging.basicConfig()` adds both a `StreamHandler` (stdout) and a `RotatingFileHandler` for `agent.log` (max 5 MB per file, 3 backup files — ~15 MB total cap).
 - **AWS mode:** Only `StreamHandler` is added. Lambda captures stdout to CloudWatch automatically. `force=True` is passed to `basicConfig()` to override the root logger Lambda pre-configures.
 
 ---
