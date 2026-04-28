@@ -154,7 +154,7 @@ Windows Task Scheduler                EventBridge cron(0 3 ? * TUE,FRI *)
 
 A public self-service signup page lets anyone subscribe to the digest without manual audience management.
 
-- **Signup page** — static HTML hosted on S3: `http://ai-news-agent-signup-<AccountId>.s3-website-<region>.amazonaws.com`
+- **Signup page** — static HTML served over HTTPS via CloudFront: `https://<id>.cloudfront.net` (exact URL printed at the end of `deploy.bat`)
 - **API endpoint** — `POST /subscribe` with `{"email": "..."}` sends a confirmation email with a signed link (valid 24 hours). The contact is only added to the Resend Audience after the subscriber clicks **Confirm my subscription** in that email (`GET /confirm`).
 - Deployed automatically as part of `deploy.bat` — the live API URL is injected into `signup/subscribe.html` before upload.
 
@@ -164,7 +164,7 @@ Once someone confirms their subscription they receive every future broadcast aut
 
 Every broadcast email includes an **Unsubscribe** link in the footer. Resend expands the `{{{RESEND_UNSUBSCRIBE_URL}}}` template variable into a per-recipient signed URL — clicking it opts the contact out directly in Resend with no code on our side.
 
-A fallback **unsubscribe page** is also hosted on S3 (`/unsubscribe.html`). Users can enter their email manually to opt out — useful when email links are stripped by a client. The page pre-fills the email from a `?email=` query parameter. It calls `POST /unsubscribe` on the same Lambda as the signup function, which flags the contact as `unsubscribed: true` in Resend. Unsubscribed contacts are preserved in the audience but excluded from all future broadcasts.
+A fallback **unsubscribe page** is also served via CloudFront (`/unsubscribe.html`). Users can enter their email manually to opt out — useful when email links are stripped by a client. The page pre-fills the email from a `?email=` query parameter. It calls `POST /unsubscribe` on the same Lambda as the signup function, which flags the contact as `unsubscribed: true` in Resend. Unsubscribed contacts are preserved in the audience but excluded from all future broadcasts.
 
 ---
 
@@ -373,13 +373,15 @@ deploy.bat
 `deploy.bat` performs four steps automatically:
 1. **`sam build`** — packages `agent.py` and dependencies into a Lambda deployment ZIP
 2. **`sam deploy`** — creates/updates all AWS resources and injects your `.env` values as Lambda env vars
-3. **Signup page upload** — retrieves `SignupApiUrl` from CloudFormation outputs, injects it into `signup/subscribe.html`, and uploads to the S3 website bucket
-4. **Unsubscribe page upload** — retrieves `UnsubscribeApiUrl`, injects it into `signup/unsubscribe.html`, and uploads to the same S3 bucket
+3. **Signup page upload** — retrieves `SignupApiUrl` from CloudFormation outputs, injects it into `signup/subscribe.html`, and uploads to `SignupBucket`
+4. **Unsubscribe page upload** — retrieves `UnsubscribeApiUrl`, injects it into `signup/unsubscribe.html`, and uploads to `SignupBucket`
 
 After deploy, URLs are printed in the summary:
-- **SignupPageUrl** — the public newsletter signup page
-- **SignupApiUrl** — the subscribe API endpoint (for reference)
-- **UnsubscribeApiUrl** — the unsubscribe API endpoint (for reference)
+- **Signup page** — the HTTPS CloudFront URL for the newsletter signup page (`SignupPageCloudFrontUrl` output)
+- **Signup API** — the subscribe API endpoint (for reference)
+- **Unsubscribe API** — the unsubscribe API endpoint (for reference)
+
+> CloudFront propagation takes ~5–15 minutes after the first deploy.
 
 Or run SAM directly — first time (interactive prompts):
 

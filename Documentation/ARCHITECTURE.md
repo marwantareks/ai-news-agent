@@ -153,8 +153,10 @@ All resources are defined in `template.yaml` and deployed via SAM.
 | `ReportsBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-reports-<AccountId>`, lifecycle: delete objects after 90 days, public access explicitly blocked (all four `PublicAccessBlockConfiguration` flags set to `true`) |
 | `AgentExecutionRole` | `AWS::IAM::Role` | Name: `ai-news-agent-lambda-role` |
 | `SignupFunction` | `AWS::Serverless::Function` | Name: `ai-news-agent-signup`, handler: `signup/handler.handler`, runtime: `python3.12`, memory: 128 MB, timeout: 10s. stdlib only — no pip deps. Handles both subscribe and unsubscribe routes. |
-| `ServerlessHttpApi` | HTTP API (auto-created by SAM) | Exposes `POST /subscribe`, `OPTIONS /subscribe`, `POST /unsubscribe`, `OPTIONS /unsubscribe`. Throttled: 10 req/s rate limit, burst 20 (configured via `Globals.HttpApi.DefaultRouteSettings`). |
-| `SignupBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-signup-<AccountId>`. Public S3 static website hosting `subscribe.html` and `unsubscribe.html`. |
+| `ServerlessHttpApi` | HTTP API (auto-created by SAM) | Exposes `POST /subscribe`, `OPTIONS /subscribe`, `GET /confirm`, `OPTIONS /confirm`, `POST /unsubscribe`, `OPTIONS /unsubscribe`. Throttled: 10 req/s rate limit, burst 20 (configured via `Globals.HttpApi.DefaultRouteSettings`). |
+| `SignupBucket` | `AWS::S3::Bucket` | Name: `ai-news-agent-signup-<AccountId>`. Stores `subscribe.html` and `unsubscribe.html`. Public access explicitly blocked — served exclusively via CloudFront. |
+| `SignupOAC` | `AWS::CloudFront::OriginAccessControl` | Origin Access Control for `SignupBucket`. Restricts S3 access to CloudFront only using SigV4 signing. |
+| `SignupCloudFrontDistribution` | `AWS::CloudFront::Distribution` | HTTPS distribution in front of `SignupBucket`. Default root object: `subscribe.html`. `ViewerProtocolPolicy: redirect-to-https`. Uses AWS-managed CachingOptimized policy. CloudFront domain emitted as `SignupPageCloudFrontUrl` output. |
 
 ### IAM Permissions
 
@@ -371,7 +373,7 @@ A second Lambda + HTTP API + S3 static site provides self-service newsletter sig
 ### Subscribe flow (double opt-in)
 
 ```
-Visitor → signup/subscribe.html (S3 website)
+Visitor → signup/subscribe.html (HTTPS via CloudFront → SignupBucket)
               │  POST /subscribe {"email": "..."}
               ▼
          API Gateway HTTP API (auto-created by SAM)
@@ -399,7 +401,7 @@ Every broadcast HTML contains `{{{RESEND_UNSUBSCRIBE_URL}}}` in the footer. Rese
 **Path 2 — Manual unsubscribe page (fallback)**
 
 ```
-Visitor → signup/unsubscribe.html (S3 website, ?email= pre-fill)
+Visitor → signup/unsubscribe.html (HTTPS via CloudFront → SignupBucket, ?email= pre-fill)
               │  POST /unsubscribe {"email": "..."}
               ▼
          API Gateway HTTP API
@@ -420,18 +422,22 @@ Visitor → signup/unsubscribe.html (S3 website, ?email= pre-fill)
 | **Route dispatch** | `handler()` inspects `event["rawPath"]` — `/confirm` → `_handle_confirm()`, `/unsubscribe` → `_handle_unsubscribe()`, all others → `_handle_subscribe()` |
 | **Double opt-in token** | `_make_token(email)` generates `(ts, sig)` where `sig = HMAC-SHA256(key=RESEND_API_KEY, msg="{email}:{ts}")`. `_verify_token()` checks the signature and rejects tokens older than 24 hours. |
 | **Confirmation email** | Sent via `POST https://api.resend.com/emails` (transactional, not broadcast). Contains a signed `GET /confirm?email=...&ts=...&sig=...` link. |
-| **Confirm response** | `GET /confirm` returns an HTML page (not JSON) — success page on valid token, error page with link back to signup on invalid/expired token. |
-| **CORS** | `Access-Control-Allow-Origin` is set to the S3 website URL via `SIGNUP_ALLOWED_ORIGIN` env var, injected by `template.yaml` — not set in `.env` |
+| **Confirm response** | `GET /confirm` returns an HTML page (not JSON) — success page on valid token, error page with link back to the subscribe page (using `SIGNUP_PAGE_URL` env var, which is the CloudFront HTTPS URL) on invalid/expired token. |
+| **CORS** | `Access-Control-Allow-Origin` is set to the CloudFront HTTPS URL via `SIGNUP_ALLOWED_ORIGIN` env var, injected by `template.yaml` — not set in `.env` |
 | **Resend contact call** | `_call_resend(email, unsubscribed, headers)` — called only after token verification for subscribe; called directly for unsubscribe |
 | **Responses** | 200 for success; 400 for invalid input or Resend 422; 502 for auth errors or upstream failures |
-| **Static pages** | `subscribe.html` contains `SIGNUP_API_URL`; `unsubscribe.html` contains `UNSUBSCRIBE_API_URL`. Both are replaced by `deploy.bat` before upload. |
-| **Public access** | `SignupBucket` has public read via a bucket policy — it is a static website, not a private store |
+| **Static pages** | `subscribe.html` contains `SIGNUP_API_URL`; `unsubscribe.html` contains `UNSUBSCRIBE_API_URL`. Both are replaced by `deploy.bat` before upload to `SignupBucket`. |
+| **Static page delivery** | `SignupBucket` has public access blocked. Pages are served exclusively via `SignupCloudFrontDistribution` (HTTPS). OAC (`SignupOAC`) signs CloudFront-to-S3 requests with SigV4. |
+| **`SIGNUP_PAGE_URL`** | Set by `template.yaml` Globals to the CloudFront HTTPS URL (`!Sub "https://${SignupCloudFrontDistribution.DomainName}"`). Used by `AgentFunction` (subscribe link in broadcast footer) and `SignupFunction` (`_html_confirm_error` back-link). |
 
 ### Deployment
 
 `deploy.bat` handles page deployment automatically after `sam deploy`:
-1. Retrieves `SignupApiUrl` → injects into `subscribe.html` → uploads to S3
-2. Retrieves `UnsubscribeApiUrl` → injects into `unsubscribe.html` → uploads to S3
+1. Retrieves `SignupApiUrl` → injects into `subscribe.html` → uploads to `SignupBucket`
+2. Retrieves `UnsubscribeApiUrl` → injects into `unsubscribe.html` → uploads to `SignupBucket`
+3. Retrieves `SignupPageCloudFrontUrl` → prints the HTTPS signup page URL in the deploy summary
+
+> CloudFront propagation takes ~5–15 minutes after the first deploy. Pages may return 403 until propagation completes.
 
 ---
 

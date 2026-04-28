@@ -94,13 +94,16 @@ powershell -Command "(Get-Content signup\unsubscribe.html) -replace 'UNSUBSCRIBE
 aws s3 cp signup\unsubscribe.html.tmp s3://ai-news-agent-signup-%AWS_ACCOUNT_ID%/unsubscribe.html --content-type text/html
 del signup\unsubscribe.html.tmp
 
+rem Retrieve CloudFront URL from stack outputs
+for /f "tokens=*" %%i in ('aws cloudformation describe-stacks --stack-name %STACK% --query "Stacks[0].Outputs[?OutputKey=='SignupPageCloudFrontUrl'].OutputValue" --output text') do set SIGNUP_PAGE_CF_URL=%%i
+
 echo.
 echo ===================================================
 echo  Deployment complete!
 echo  - Lambda runs Tue/Fri at 03:00 UTC
 echo  - Logs: CloudWatch /aws/lambda/ai-news-agent
 echo  - Reports: S3 bucket ai-news-agent-reports-%AWS_ACCOUNT_ID%
-echo  - Signup page: http://ai-news-agent-signup-%AWS_ACCOUNT_ID%.s3-website-%REGION%.amazonaws.com
+echo  - Signup page: %SIGNUP_PAGE_CF_URL%
 echo  - Signup API:      %SIGNUP_API_URL%
 echo  - Unsubscribe API: %UNSUBSCRIBE_API_URL%
 echo ===================================================

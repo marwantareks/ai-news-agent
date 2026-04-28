@@ -48,7 +48,7 @@ Ordered by: high exploited AWS cost first, then low effort, then low solution co
 | Fix 7 | #9 — No CSP in generated HTML | Medium | Low | None | None | Pending |
 | Fix 8 | #12 — Unbounded log file | Low | Low | None | None | Complete |
 | Fix 9 | #14 — Reports bucket public access block | Low | Low | Low | None | Complete |
-| Fix 10 | #4 — HTTP-only signup page | High | Medium | Low | Low | Pending |
+| Fix 10 | #4 — HTTP-only signup page | High | Medium | Low | Low | Complete |
 | Fix 11 | #7 — API keys in Lambda env vars | Medium | Medium | Critical if leaked | Low (~$1–2/mo) | Pending |
 | Fix 12 | #11 — URL injection past scheme check | Medium | Medium | None | None | Pending |
 
@@ -252,13 +252,26 @@ The generated HTML report has no Content-Security-Policy. While all values are c
 
 ---
 
-## Fix 10 — HTTP-Only Signup Page (No TLS)
+## Fix 10 — HTTP-Only Signup Pages (No TLS)
 
 **Finding:** #4
 **Effort:** Medium | **Exploited AWS Cost:** Low | **Solution Cost:** Low (~$0/month on free tier for low traffic)
 
 ### Why
-The S3-hosted signup page is served over plain HTTP. An attacker on the same network can MITM the connection and inject JavaScript before the page is rendered in the user's browser. Adding a CloudFront distribution with an ACM certificate delivers the page over HTTPS.
+All three user-facing signup flows are exposed over plain HTTP or link back to an HTTP origin:
+
+- **`subscribe.html`** — served from S3 website over HTTP. An attacker on the same network can MITM the connection and inject JavaScript.
+- **`unsubscribe.html`** — also served from S3 website over HTTP; same MITM risk. The unsubscribe link embedded in every broadcast points to this page.
+- **Confirm subscription** — the `/confirm` endpoint is Lambda-rendered inline HTML, already served over HTTPS via API Gateway. However, `_html_confirm_error()` in `signup/handler.py` generates a "subscribe again" link using the `SIGNUP_PAGE_URL` env var, which is currently set to the HTTP S3 website URL in `template.yaml`. If `SIGNUP_PAGE_URL` is not updated, the error page links users back to an HTTP page even after CloudFront is in place.
+
+Adding a CloudFront distribution in front of `SignupBucket` delivers `subscribe.html` and `unsubscribe.html` over HTTPS, and updating `SIGNUP_PAGE_URL` to the CloudFront URL closes the HTTP back-link in confirm error pages.
+
+### Pages and files in scope
+| Page / flow | How served | Fix needed |
+|---|---|---|
+| `subscribe.html` | S3 static website (HTTP) | Serve via CloudFront (HTTPS) |
+| `unsubscribe.html` | S3 static website (HTTP) | Serve via CloudFront (HTTPS) |
+| Confirm subscription (`/confirm`) | Lambda inline HTML (HTTPS via API GW) | No infrastructure change; update `SIGNUP_PAGE_URL` so back-link is HTTPS |
 
 ### Steps
 
@@ -268,13 +281,18 @@ The S3-hosted signup page is served over plain HTTP. An attacker on the same net
    - An `OAC` (Origin Access Control) resource (`AWS::CloudFront::OriginAccessControl`) to restrict S3 origin access to CloudFront only.
    - Update `SignupBucketPolicy` to allow `s3:GetObject` only from the CloudFront OAC principal rather than `"*"`.
    - Update `PublicAccessBlockConfiguration` on `SignupBucket` to block direct public access (access now flows through CloudFront only).
-3. Add a `SignupPageCloudFrontUrl` CloudFormation Output with the CloudFront domain (`!GetAtt CloudFrontDistribution.DomainName`).
-4. **Edit** `deploy.bat` to use `SignupPageCloudFrontUrl` instead of `SignupPageUrl` when printing the summary and when setting the `SIGNUP_ALLOWED_ORIGIN` for the Lambda (update `template.yaml` accordingly).
+   - Update `SIGNUP_ALLOWED_ORIGIN` on `SignupFunction` to use `!Sub "https://${CloudFrontDistribution.DomainName}"` instead of the HTTP S3 website URL, so CORS is enforced against the CloudFront origin.
+   - Update `SIGNUP_PAGE_URL` in the `Globals` block to use `!Sub "https://${CloudFrontDistribution.DomainName}"`. This fixes the back-link in `_html_confirm_error()` in `signup/handler.py`, which uses this env var to link back to the subscribe page.
+3. Add a `SignupPageCloudFrontUrl` CloudFormation Output with `Value: !Sub "https://${CloudFrontDistribution.DomainName}"`. Retain the existing `SignupPageUrl` output as deprecated or remove it.
+4. **Edit** `deploy.bat`:
+   - Use `SignupPageCloudFrontUrl` instead of `SignupPageUrl` when printing the deploy summary.
+   - Ensure both `subscribe.html` and `unsubscribe.html` are still uploaded to `SignupBucket` after deploy (they already are; confirm neither upload references the old HTTP URL).
+   - The `SIGNUP_API_URL` placeholder in `subscribe.html` and `UNSUBSCRIBE_API_URL` placeholder in `unsubscribe.html` are API Gateway URLs (already HTTPS) — no change needed to those replacements.
 5. **Ask the user to confirm** the full change before applying. Note that CloudFront propagation takes ~5–15 minutes after deploy.
 6. **Documentation updates:**
-   - **`README.md`** — update the "Newsletter Signup & Unsubscribe" section signup page URL format to show `https://` CloudFront URL instead of the `http://` S3 website URL.
-   - **`Documentation/USER_GUIDE.md`** — update Section 9 signup page URL reference.
-   - **`Documentation/ARCHITECTURE.md`** — update the `SignupBucket` row in the AWS Infrastructure table (Section 6) and the subscribe/unsubscribe flow diagram (Section 14) to include CloudFront; update the SignupPageUrl output description.
+   - **`README.md`** — update the "Newsletter Signup & Unsubscribe" section to show `https://` CloudFront URL for all page references (subscribe page and unsubscribe page); update `SignupPageUrl` output description.
+   - **`Documentation/USER_GUIDE.md`** — update Section 9 signup page and unsubscribe page URL references to show the CloudFront `https://` URL.
+   - **`Documentation/ARCHITECTURE.md`** — update the `SignupBucket` row in the AWS Infrastructure table (Section 6) to note CloudFront distribution in front; update the subscribe/unsubscribe/confirm flow diagram (Section 14) to include CloudFront and note that `SIGNUP_PAGE_URL` now points to the CloudFront URL; update the `SignupPageUrl` output description.
 
 ---
 

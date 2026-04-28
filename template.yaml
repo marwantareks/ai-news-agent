@@ -45,7 +45,7 @@ Globals:
         S3_BUCKET: !Ref ReportsBucket
         RESEND_API_KEY: !Ref ResendApiKey
         RESEND_AUDIENCE_ID: !Ref ResendAudienceId
-        SIGNUP_PAGE_URL: !Sub "http://ai-news-agent-signup-${AWS::AccountId}.s3-website-${AWS::Region}.amazonaws.com"
+        SIGNUP_PAGE_URL: !Sub "https://${SignupCloudFrontDistribution.DomainName}"
 
 Resources:
 
@@ -122,7 +122,7 @@ Resources:
       MemorySize: 128
       Environment:
         Variables:
-          SIGNUP_ALLOWED_ORIGIN: !Sub "http://ai-news-agent-signup-${AWS::AccountId}.s3-website-${AWS::Region}.amazonaws.com"
+          SIGNUP_ALLOWED_ORIGIN: !Sub "https://${SignupCloudFrontDistribution.DomainName}"
       Events:
         SignupPost:
           Type: HttpApi
@@ -160,13 +160,11 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "ai-news-agent-signup-${AWS::AccountId}"
-      WebsiteConfiguration:
-        IndexDocument: subscribe.html
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
 
   SignupBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -175,9 +173,45 @@ Resources:
       PolicyDocument:
         Statement:
           - Effect: Allow
-            Principal: "*"
+            Principal:
+              Service: cloudfront.amazonaws.com
             Action: s3:GetObject
             Resource: !Sub "arn:aws:s3:::${SignupBucket}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${SignupCloudFrontDistribution}"
+
+  # ── CloudFront OAC for signup bucket ─────────────────────────────────────────
+  SignupOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "ai-news-agent-signup-oac-${AWS::AccountId}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # ── CloudFront distribution for signup pages ──────────────────────────────────
+  SignupCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        DefaultRootObject: subscribe.html
+        Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: SignupS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          AllowedMethods:
+            - GET
+            - HEAD
+          Compress: true
+        Origins:
+          - Id: SignupS3Origin
+            DomainName: !GetAtt SignupBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+            OriginAccessControlId: !GetAtt SignupOAC.Id
 
 Outputs:
   ReportsBucketName:
@@ -196,9 +230,9 @@ Outputs:
     Description: Signup endpoint URL
     Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/subscribe"
 
-  SignupPageUrl:
-    Description: Public signup page URL
-    Value: !Sub "http://ai-news-agent-signup-${AWS::AccountId}.s3-website-${AWS::Region}.amazonaws.com"
+  SignupPageCloudFrontUrl:
+    Description: Public signup page URL (HTTPS via CloudFront)
+    Value: !Sub "https://${SignupCloudFrontDistribution.DomainName}"
 
   UnsubscribeApiUrl:
     Description: Unsubscribe endpoint URL

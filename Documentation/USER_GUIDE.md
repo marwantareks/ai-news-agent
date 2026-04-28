@@ -203,8 +203,8 @@ The agent sends email via [Resend](https://resend.com) — a developer-friendly 
 
 A public signup page lets anyone subscribe to the digest without any manual steps on your end.
 
-**Signup page URL:** `http://ai-news-agent-signup-<AccountId>.s3-website-<region>.amazonaws.com`
-(printed at the end of every `deploy.bat` run)
+**Signup page URL:** `https://<id>.cloudfront.net`
+(printed at the end of every `deploy.bat` run as **Signup page**)
 
 When someone submits their email:
 1. The page calls `POST /subscribe` on the API Gateway endpoint.
@@ -223,9 +223,9 @@ There are two ways a subscriber can opt out:
 Every broadcast contains an **Unsubscribe** link in the footer. Clicking it takes the subscriber to a Resend-hosted page that opts them out instantly — no email address entry required.
 
 **2. Manual unsubscribe page (fallback)**
-A static page at `/unsubscribe.html` on the same S3 site lets anyone enter their email to unsubscribe manually — useful when email links are blocked by their client.
+A static page at `/unsubscribe.html` on the same CloudFront distribution lets anyone enter their email to unsubscribe manually — useful when email links are blocked by their client.
 
-`http://ai-news-agent-signup-<AccountId>.s3-website-<region>.amazonaws.com/unsubscribe.html`
+`https://<id>.cloudfront.net/unsubscribe.html`
 
 The page also accepts a `?email=` query parameter for pre-filling (e.g. from a link in an email).
 
