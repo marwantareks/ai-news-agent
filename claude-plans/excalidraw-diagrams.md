@@ -59,7 +59,7 @@ Include evidence artifacts:
 
 ---
 
-## Task 4: AWS Architecture
+## Task 4: AWS Architecture - Complete
 
 **File:** `diagrams/aws-architecture.excalidraw`
 **Type:** Technical / Comprehensive
